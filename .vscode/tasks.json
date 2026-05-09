@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/opn-chat.sln"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build frontend",
+      "command": "npm",
+      "type": "process",
+      "args": [
+        "run",
+        "build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/opn-chat-client"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "dev frontend",
+      "command": "npm",
+      "type": "process",
+      "args": [
+        "run",
+        "dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/opn-chat-client",
+        "env": {
+          "VITE_API_URL": "http://localhost:5091",
+          "BROWSER": "firefox"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

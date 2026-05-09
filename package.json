@@ -1,0 +1,14 @@
+{
+  "name": "opn-chat",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd opn-chat-client && npm run dev",
+    "dev:server": "cd src/WebAPI/opn-chat.WebAPI && dotnet run",
+    "build": "cd opn-chat-client && npm run build",
+    "lint": "cd opn-chat-client && npm run lint"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2"
+  }
+}

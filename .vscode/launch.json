@@ -1,0 +1,47 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend (.NET)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/WebAPI/opn-chat.WebAPI/bin/Debug/net9.0/opn-chat.WebAPI.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/WebAPI/opn-chat.WebAPI",
+      "stopAtEntry": false,
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "sourceFileMapOverrides": {
+        ".*": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Frontend (React)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/opn-chat-client",
+      "env": {
+        "VITE_API_URL": "http://localhost:5091",
+        "BROWSER": "firefox"
+      },
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": ".NET Attach",
+      "type": "coreclr",
+      "request": "attach"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full Stack (Backend + Frontend)",
+      "configurations": ["Backend (.NET)", "Frontend (React)"],
+      "stopAll": true
+    }
+  ]
+}
