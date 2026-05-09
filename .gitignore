@@ -1,2 +1,47 @@
-.agents/skills/accessibility/SKILL.md
+# ─── .NET ────────────────────────────────────────────────────────────────────
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+.vs/
+*.pdb
+*.opendb
+*.VC.db
+
+# NuGet
+*.nupkg
+packages/
+
+# Secrets — NEVER commit these
+appsettings.Development.json
+appsettings.Local.json
+*.secrets.json
+
+# ─── Node / Frontend ─────────────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+*.local
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# SQLite databases and logs
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# ─── IDE / OS ─────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.DS_Store
+Thumbs.db
+
+# ─── Claude / Agents ──────────────────────────────────────────────────────────
+.claude/
+.agents/
+.atl/
 nul
