@@ -35,6 +35,7 @@ namespace opn_chat.Application.DTOs
         public string? Bio { get; set; }
         public string? Status { get; set; }
         public DateTime LastSeen { get; set; }
+        public bool IsAdmin { get; set; }
     }
 
     public class RefreshTokenDto

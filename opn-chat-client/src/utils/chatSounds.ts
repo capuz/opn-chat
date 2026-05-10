@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'chat:sound:enabled';
 
-export type SoundEvent = 'highlight' | 'join' | 'part' | 'privateMessage' | 'mention' | 'error';
+export type SoundEvent = 'highlight' | 'join' | 'part' | 'privateMessage' | 'mention' | 'error' | 'success';
 
 function playTone(
   ctx: AudioContext,
@@ -69,6 +69,13 @@ const sounds: Record<SoundEvent, () => void> = {
   error: () => withCtx((ctx) => {
     playTone(ctx, 400, ctx.currentTime,       0.1);
     playTone(ctx, 280, ctx.currentTime + 0.13, 0.15);
+  }),
+
+  // warm ascending 3-step (command success, e.g. nick change)
+  success: () => withCtx((ctx) => {
+    playTone(ctx, 700,  ctx.currentTime,        0.055, 0.09);
+    playTone(ctx, 900,  ctx.currentTime + 0.07, 0.055, 0.09);
+    playTone(ctx, 1100, ctx.currentTime + 0.14, 0.08,  0.09);
   }),
 };
 

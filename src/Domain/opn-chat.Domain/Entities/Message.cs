@@ -2,7 +2,7 @@ using System;
 
 namespace opn_chat.Domain.Entities
 {
-    public enum MessageType { Normal = 0, Action = 1 }
+    public enum MessageType { Normal = 0, Action = 1, System = 2 }
 
     public class Message
     {

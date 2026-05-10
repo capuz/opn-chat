@@ -41,7 +41,10 @@
       "Bash(Get-Content \"C:\\\\Users\\\\fcapuz\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--dev-opn-chat\\\\6cc4e99f-a6a7-4902-bdae-b923f15af111\\\\tasks\\\\b544osd8d.output\")",
       "Bash(git rm *)",
       "Bash(git commit *)",
-      "Bash(grep -E \"\\(appsettings\\\\.Development|appsettings\\\\.Production|\\\\.env$|\\\\.db$|\\\\.log$|ClientSecret|ClientId\\)\")"
+      "Bash(grep -E \"\\(appsettings\\\\.Development|appsettings\\\\.Production|\\\\.env$|\\\\.db$|\\\\.log$|ClientSecret|ClientId\\)\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\dev\\\\opn-chat\\\\src\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem *)"
     ]
   }
 }

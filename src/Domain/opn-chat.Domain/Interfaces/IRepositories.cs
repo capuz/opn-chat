@@ -27,6 +27,10 @@ namespace opn_chat.Domain.Interfaces
     {
         Task<IEnumerable<Room>> GetPublicRoomsAsync();
         Task<bool> IsUserMemberAsync(Guid roomId, Guid userId);
+        Task<Room?> GetByNameAsync(string name);
+        Task<int> CountCreatedTodayByUserAsync(Guid userId);
+        Task<int> CountActiveByUserAsync(Guid userId);
+        Task<IEnumerable<Room>> GetInactiveForArchivalAsync(DateTime cutoffDate);
     }
 
     public interface IRoomMemberRepository : IRepository<RoomMember>
@@ -46,6 +50,19 @@ namespace opn_chat.Domain.Interfaces
         Task<IEnumerable<PrivateMessage>> GetConversationAsync(Guid user1Id, Guid user2Id, Guid requesterId, int skip, int take);
         Task<int> GetUnreadCountAsync(Guid userId);
         Task MarkConversationAsReadAsync(Guid senderId, Guid receiverId);
+    }
+
+    public interface ISystemSettingRepository
+    {
+        Task<string?> GetValueAsync(string key);
+    }
+
+    public interface ICommandPermissionRepository
+    {
+        Task<IEnumerable<CommandPermission>> GetAllAsync();
+        Task<CommandPermission?> GetByNameAsync(string commandName);
+        Task UpsertAsync(CommandPermission permission);
+        Task UpsertManyAsync(IEnumerable<CommandPermission> permissions);
     }
 
     public interface IUnitOfWork

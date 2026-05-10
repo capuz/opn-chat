@@ -62,6 +62,9 @@ class ApiService {
 
               localStorage.setItem('accessToken', accessToken);
               localStorage.setItem('refreshToken', newRefreshToken);
+              if (response.data.user) {
+                localStorage.setItem('user', JSON.stringify(response.data.user));
+              }
 
               this.onRefreshed(accessToken);
 

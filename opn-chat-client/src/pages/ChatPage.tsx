@@ -208,6 +208,7 @@ const ChatPage = () => {
   const [newRoomDescription,  setNewRoomDescription]  = useState('');
   const [newRoomIsPrivate,    setNewRoomIsPrivate]    = useState(false);
   const [newRoomPassword,     setNewRoomPassword]     = useState('');
+  const [createRoomError,     setCreateRoomError]     = useState('');
 
   const [showNicknameModal,   setShowNicknameModal]   = useState(false);
   const [newNickname,         setNewNickname]         = useState('');
@@ -385,10 +386,26 @@ const ChatPage = () => {
       ));
     });
 
+    nc.on('Kicked', () => {
+      authService.logout().catch(() => { window.location.href = '/login'; });
+    });
+
+    nc.on('GlobalAnnouncement', (data: { message: string; adminNickname: string }) => {
+      setGlobalMessages(prev => [...prev, {
+        userId: 'system',
+        userName: `📢 ${data.adminNickname}`,
+        content: data.message,
+        timestamp: new Date().toISOString(),
+        type: 'normal',
+      } as import('../types/auth').Message]);
+    });
+
     startConnection('notifications').catch(() => {});
     return () => {
       nc.off('NewDirectMessage');
       nc.off('PrivateMessageDeleted');
+      nc.off('Kicked');
+      nc.off('GlobalAnnouncement');
       stopConnection('notifications');
     };
   }, [isAuthenticated]); // Solo se reconecta al login/logout — no al cambiar de modo
@@ -476,6 +493,96 @@ const ChatPage = () => {
     } catch (e) { console.error('[Me] invoke failed:', e); }
   };
 
+  const injectLocal = (content: string) => {
+    setGlobalMessages(prev => [...prev, {
+      id: `local-${Date.now()}`,
+      userId: '',
+      content,
+      timestamp: new Date().toISOString(),
+      type: 'system' as const,
+    }]);
+  };
+
+  const handleNick = async (newNick: string) => {
+    if (!newNick.trim()) { injectLocal('Usage: /nick <nickname>'); return; }
+    if (nicknameChangesLeft === 0) {
+      chatSounds.play('error');
+      injectLocal('You have used all 3 nickname changes allowed per account.');
+      return;
+    }
+    const trimmed = newNick.trim();
+    if (trimmed.length < 2 || trimmed.length > 30) {
+      chatSounds.play('error');
+      injectLocal('Nickname must be 2–30 characters.');
+      return;
+    }
+    try {
+      const res = await api.put('/api/profile/nickname', { nickname: trimmed });
+      setNicknameChangesLeft(res.data.changesLeft);
+      const stored = localStorage.getItem('user');
+      if (stored) { const p = JSON.parse(stored); p.nickname = trimmed; localStorage.setItem('user', JSON.stringify(p)); }
+      refreshAuth();
+      chatSounds.play('success');
+      injectLocal(`You are now known as ${trimmed}. Changes left: ${res.data.changesLeft}`);
+    } catch (err: any) {
+      chatSounds.play('error');
+      injectLocal(err?.response?.data?.error ?? 'Failed to change nickname.');
+    }
+  };
+
+  const handleJoin = (roomName: string) => {
+    if (!roomName.trim()) { injectLocal('Usage: /join #roomname'); return; }
+    const name = roomName.trim().startsWith('#') ? roomName.trim() : `#${roomName.trim()}`;
+    const room = rooms.find(r => r.name.toLowerCase() === name.toLowerCase());
+    if (!room) {
+      chatSounds.play('error');
+      injectLocal(`No room named ${name} found.`);
+      return;
+    }
+    chatSounds.play('join');
+    switchRoom(room.id);
+  };
+
+  const handleList = () => {
+    const lines = rooms.length > 0
+      ? ['Available rooms:', ...rooms.map(r => `  ${r.name}${r.description ? ` — ${r.description}` : ''}`)]
+      : ['No rooms available.'];
+    injectLocal(lines.join('\n'));
+  };
+
+  const handleMsg = async (args: string) => {
+    const spaceIdx = args.indexOf(' ');
+    const nick = (spaceIdx === -1 ? args : args.slice(0, spaceIdx)).trim();
+    const text = spaceIdx === -1 ? '' : args.slice(spaceIdx + 1).trim();
+    if (!nick) { injectLocal('Usage: /msg <nick> [message]'); return; }
+    const user = onlineUsers.find(u => u.nickname.toLowerCase() === nick.toLowerCase());
+    if (!user) {
+      chatSounds.play('error');
+      injectLocal(`User "${nick}" not found online.`);
+      return;
+    }
+    await startPrivateChat(user.id, user.nickname);
+    chatSounds.play('privateMessage');
+    if (text) {
+      try { await privateChatService.sendMessage(user.id, text); } catch { /* ignore */ }
+    }
+  };
+
+  const handleHelp = () => {
+    injectLocal([
+      'Available commands:',
+      '  /me <text>         — Send an action message (* Nick text)',
+      '  /away [message]    — Set yourself as away',
+      '  /back              — Clear away status',
+      '  /clear             — Clear chat messages locally',
+      '  /nick <nickname>   — Change your nickname (max 3 changes per account)',
+      '  /join #roomname    — Switch to a room',
+      '  /list              — List available rooms',
+      '  /msg <nick> [msg]  — Open a DM (optionally send first message)',
+      '  /help              — Show this help',
+    ].join('\n'));
+  };
+
   const loadMessages = async (roomId: string) => {
     const res = await api.get(`/api/rooms/${roomId}/messages`, { params: { take: 50 } });
     setGlobalMessages(res.data);
@@ -492,11 +599,18 @@ const ChatPage = () => {
       const arg = spaceIdx === -1 ? '' : text.slice(spaceIdx + 1);
       setInputMessage('');
       if (cmd === 'clear') { handleClear(); return; }
-      if (cmd === 'back')  { await handleBack(); return; }
-      if (cmd === 'away')  { await handleAway(arg); return; }
+      if (cmd === 'back')  { await handleBack(); chatSounds.play('join'); return; }
+      if (cmd === 'away')  { await handleAway(arg); chatSounds.play('part'); return; }
       if (cmd === 'me')    { await handleMe(arg); return; }
-      // Unknown slash command — send as-is (fall through)
-      setInputMessage(text);
+      if (cmd === 'nick')  { await handleNick(arg); return; }
+      if (cmd === 'join')  { handleJoin(arg); return; }
+      if (cmd === 'list')  { handleList(); return; }
+      if (cmd === 'msg')   { await handleMsg(arg); return; }
+      if (cmd === 'help')  { handleHelp(); return; }
+      // Unknown slash command
+      chatSounds.play('error');
+      injectLocal(`Unknown command: /${cmd}. Type /help for available commands.`);
+      return;
     }
 
     if (chatMode === 'global') {
@@ -574,20 +688,33 @@ const ChatPage = () => {
   };
 
   const createRoom = async () => {
-    if (!newRoomName.trim()) return;
+    const trimmed = newRoomName.trim();
+    if (!trimmed) return;
+    setCreateRoomError('');
+    const fullName = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
     try {
       const r = await roomService.createRoom({
-        name: newRoomName, description: newRoomDescription,
+        name: fullName, description: newRoomDescription,
         isPrivate: newRoomIsPrivate,
         password: newRoomIsPrivate ? newRoomPassword : undefined,
       });
-      await roomService.joinRoom(r.id, newRoomIsPrivate ? newRoomPassword : undefined);
       setRooms(prev => [...prev, { id: r.id, name: r.name, description: r.description || '' }]);
       await switchRoom(r.id);
       setShowCreateRoom(false);
       setNewRoomName(''); setNewRoomDescription('');
       setNewRoomIsPrivate(false); setNewRoomPassword('');
-    } catch { /* ignore */ }
+      setCreateRoomError('');
+    } catch (err: any) {
+      const code = err?.code as string | undefined;
+      const errorMessages: Record<string, string> = {
+        INVALID_NAME: 'Invalid name. Use only lowercase letters, numbers, - and _ (e.g. my-room).',
+        NAME_TAKEN: 'That room name is already taken.',
+        DAILY_LIMIT: 'You can only create 3 rooms per day.',
+        ACTIVE_LIMIT: 'You have reached the limit of 10 active rooms.',
+        CREATION_DISABLED: 'Room creation is currently disabled by admins.',
+      };
+      setCreateRoomError(errorMessages[code ?? ''] ?? 'Could not create room. Try again.');
+    }
   };
 
   const onEmojiClick = useCallback((data: EmojiClickData) => {
@@ -925,6 +1052,7 @@ const ChatPage = () => {
               globalMessages.map((msg, i) => {
                 const isMe = msg.userId === user.id;
                 const isAction = msg.type === 'action';
+                const isSystem = msg.type === 'system';
                 const nick = isMe ? (user.nickname ?? 'You') : (msg.userName ?? 'User');
                 return (
                   <div key={i} style={{
@@ -935,7 +1063,11 @@ const ChatPage = () => {
                     <span style={{ color: 'var(--ch-text-3)', fontSize: 10, flexShrink: 0, fontFamily: "'DM Mono', monospace" }}>
                       {fmtTime(msg.timestamp)}
                     </span>
-                    {isAction ? (
+                    {isSystem ? (
+                      <span style={{ fontSize: 12, color: 'var(--ch-text-3)', fontStyle: 'italic', wordBreak: 'break-word', lineHeight: 1.55 }}>
+                        — {msg.content}
+                      </span>
+                    ) : isAction ? (
                       <span style={{ fontSize: 13, color: 'var(--ch-text-2)', fontStyle: 'italic', wordBreak: 'break-word', lineHeight: 1.55 }}>
                         * <strong style={{ color: isMe ? 'var(--ch-me)' : nickColor(msg.userId ?? ''), fontStyle: 'normal' }}>{nick}</strong> {msg.content}
                       </span>
@@ -1280,8 +1412,23 @@ const ChatPage = () => {
                 <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--ch-text-2)', marginBottom: 5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                   Room Name
                 </label>
-                <input type="text" value={newRoomName} onChange={e => setNewRoomName(e.target.value)}
-                  placeholder="e.g. general" className="ch-input" style={modalInput} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                  <span style={{
+                    padding: '7px 10px', fontSize: 13, fontWeight: 700,
+                    background: 'var(--ch-bg-3)', border: '1px solid var(--ch-border-2)',
+                    borderRight: 'none', borderRadius: '6px 0 0 6px',
+                    color: 'var(--ch-accent)', fontFamily: "'DM Mono', monospace", lineHeight: 1,
+                  }}>#</span>
+                  <input
+                    type="text" value={newRoomName}
+                    onChange={e => { setNewRoomName(e.target.value.replace(/^#+/, '')); setCreateRoomError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && createRoom()}
+                    placeholder="my-room" className="ch-input"
+                    style={{ ...modalInput, borderRadius: '0 6px 6px 0', flex: 1 }} />
+                </div>
+                <span style={{ fontSize: 10, color: 'var(--ch-text-3)', marginTop: 4, display: 'block' }}>
+                  Lowercase letters, numbers, - and _. Min 3, max 30 chars.
+                </span>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--ch-text-2)', marginBottom: 5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
@@ -1303,10 +1450,13 @@ const ChatPage = () => {
                     className="ch-input" style={modalInput} />
                 </div>
               )}
+              {createRoomError && (
+                <span style={{ fontSize: 11, color: 'var(--ch-error)', lineHeight: 1.4 }}>{createRoomError}</span>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-              <button onClick={() => setShowCreateRoom(false)} style={{
+              <button onClick={() => { setShowCreateRoom(false); setCreateRoomError(''); }} style={{
                 padding: '7px 16px', fontSize: 12, background: 'var(--ch-bg-3)',
                 border: '1px solid var(--ch-border-2)', borderRadius: 6,
                 cursor: 'pointer', color: 'var(--ch-text-2)', fontFamily: 'inherit',

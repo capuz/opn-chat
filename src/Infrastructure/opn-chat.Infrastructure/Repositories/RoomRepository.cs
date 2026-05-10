@@ -59,5 +59,31 @@ namespace opn_chat.Infrastructure.Repositories
             return await _context.RoomMembers
                 .AnyAsync(rm => rm.UserId == userId && rm.RoomId == roomId);
         }
+
+        public async Task<Room?> GetByNameAsync(string name)
+        {
+            return await _context.Rooms.FirstOrDefaultAsync(r => r.Name == name);
+        }
+
+        public async Task<int> CountCreatedTodayByUserAsync(Guid userId)
+        {
+            var todayUtc = DateTime.UtcNow.Date;
+            return await _context.Rooms
+                .CountAsync(r => r.CreatedById == userId && r.CreatedAt >= todayUtc);
+        }
+
+        public async Task<int> CountActiveByUserAsync(Guid userId)
+        {
+            return await _context.Rooms
+                .CountAsync(r => r.CreatedById == userId && !r.IsArchived);
+        }
+
+        public async Task<IEnumerable<Room>> GetInactiveForArchivalAsync(DateTime cutoffDate)
+        {
+            return await _context.Rooms
+                .Where(r => !r.IsSystem && !r.IsArchived &&
+                    (r.LastActivityAt == null || r.LastActivityAt < cutoffDate))
+                .ToListAsync();
+        }
     }
 }

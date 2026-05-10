@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using opn_chat.Application.DTOs;
 using opn_chat.Domain.Entities;
 using opn_chat.Domain.Interfaces;
@@ -10,28 +11,55 @@ namespace opn_chat.Application.Services
         private readonly IRoomMemberRepository _roomMemberRepository;
         private readonly IUserRepository _userRepository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ISystemSettingRepository _settings;
+
+        private static readonly Regex RoomNameRegex = new(@"^#[a-z0-9\-_]{3,30}$", RegexOptions.Compiled);
+        private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
+            { "#admin", "#system", "#support" };
 
         public RoomService(
             IRoomRepository roomRepository,
             IRoomMemberRepository roomMemberRepository,
             IUserRepository userRepository,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ISystemSettingRepository settings)
         {
             _roomRepository = roomRepository;
             _roomMemberRepository = roomMemberRepository;
             _userRepository = userRepository;
             _unitOfWork = unitOfWork;
+            _settings = settings;
         }
 
-        public async Task<Room?> CreateRoomAsync(Guid userId, CreateRoomDto dto)
+        public async Task<CreateRoomResultDto> CreateRoomAsync(Guid userId, CreateRoomDto dto)
         {
+            var allowCreation = await _settings.GetValueAsync("AllowRoomCreation");
+            if (allowCreation?.Equals("false", StringComparison.OrdinalIgnoreCase) == true)
+                return new CreateRoomResultDto { Error = RoomCreationError.RoomCreationDisabled };
+
+            if (!RoomNameRegex.IsMatch(dto.Name) || ReservedNames.Contains(dto.Name))
+                return new CreateRoomResultDto { Error = RoomCreationError.InvalidName };
+
+            var existing = await _roomRepository.GetByNameAsync(dto.Name);
+            if (existing != null)
+                return new CreateRoomResultDto { Error = RoomCreationError.NameTaken };
+
+            var todayCount = await _roomRepository.CountCreatedTodayByUserAsync(userId);
+            if (todayCount >= 3)
+                return new CreateRoomResultDto { Error = RoomCreationError.DailyLimitReached };
+
+            var activeCount = await _roomRepository.CountActiveByUserAsync(userId);
+            if (activeCount >= 10)
+                return new CreateRoomResultDto { Error = RoomCreationError.ActiveLimitReached };
+
             var room = new Room
             {
                 Name = dto.Name,
                 Description = dto.Description,
                 IsPrivate = dto.IsPrivate,
-                PasswordHash = dto.IsPrivate ? dto.Password : null, // TODO: Hash password
-                CreatedById = userId
+                PasswordHash = dto.IsPrivate ? dto.Password : null,
+                CreatedById = userId,
+                LastActivityAt = DateTime.UtcNow
             };
 
             await _roomRepository.AddAsync(room);
@@ -46,7 +74,19 @@ namespace opn_chat.Application.Services
             await _roomMemberRepository.AddAsync(roomMember);
             await _unitOfWork.CommitAsync();
 
-            return room;
+            return new CreateRoomResultDto
+            {
+                Room = new RoomDto
+                {
+                    Id = room.Id,
+                    Name = room.Name,
+                    Description = room.Description,
+                    IsPrivate = room.IsPrivate,
+                    IsSystem = room.IsSystem,
+                    IsArchived = room.IsArchived,
+                    MemberCount = 1
+                }
+            };
         }
 
         public async Task<IEnumerable<Room>> GetPublicRoomsAsync()
@@ -66,7 +106,7 @@ namespace opn_chat.Application.Services
 
             if (room.IsPrivate)
             {
-                if (string.IsNullOrEmpty(password) || password != room.PasswordHash) // TODO: Compare hashed password
+                if (string.IsNullOrEmpty(password) || password != room.PasswordHash)
                     return false;
             }
 

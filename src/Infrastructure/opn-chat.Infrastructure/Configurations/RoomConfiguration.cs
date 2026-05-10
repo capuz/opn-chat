@@ -13,6 +13,9 @@ namespace opn_chat.Infrastructure.Configurations
             
             builder.Property(r => r.Name).IsRequired().HasMaxLength(100);
             builder.Property(r => r.Description).HasMaxLength(500);
+            builder.Property(r => r.IsSystem).IsRequired();
+            builder.Property(r => r.IsArchived).IsRequired();
+            builder.Property(r => r.LastActivityAt);
             
             builder.HasOne(r => r.CreatedBy)
                 .WithMany()

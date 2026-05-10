@@ -28,12 +28,14 @@ namespace opn_chat.Application.Services
             
             var expiry = DateTime.UtcNow.AddMinutes(_accessTokenExpiryMinutes);
             
-            var claims = new[]
+            var claimsList = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Email, user.Email),
                 new Claim(ClaimTypes.Name, user.Nickname)
             };
+            if (user.IsAdmin) claimsList.Add(new Claim(ClaimTypes.Role, "admin"));
+            var claims = claimsList.ToArray();
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {

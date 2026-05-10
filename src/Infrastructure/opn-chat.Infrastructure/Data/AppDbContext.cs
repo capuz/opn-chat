@@ -19,6 +19,9 @@ namespace opn_chat.Infrastructure.Data
         public DbSet<Report> Reports { get; set; }
         public DbSet<Ban> Bans { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
+        public DbSet<AdminAuditLog> AdminAuditLogs { get; set; }
+        public DbSet<SystemSetting> SystemSettings { get; set; }
+        public DbSet<CommandPermission> CommandPermissions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -26,6 +29,8 @@ namespace opn_chat.Infrastructure.Data
 
             // Apply all configurations from the assembly
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+
+            modelBuilder.Entity<CommandPermission>().HasKey(c => c.CommandName);
 
             // Global query filters for soft deletes
             modelBuilder.Entity<Message>().HasQueryFilter(m => !m.IsDeleted);

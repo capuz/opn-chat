@@ -20,6 +20,8 @@ namespace opn_chat.Domain.Entities
         public string? CountryCode { get; set; }
         public bool ShowFlag { get; set; } = false;
         public string? GlobalBadge { get; set; }
+        public bool IsAdmin { get; set; } = false;
+        public bool IsDeactivated { get; set; } = false;
 
         // Navigation properties
         public ICollection<RoomMember> RoomMembers { get; set; } = new List<RoomMember>();
