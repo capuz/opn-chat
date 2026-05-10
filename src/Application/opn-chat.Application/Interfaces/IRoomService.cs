@@ -5,7 +5,7 @@ namespace opn_chat.Application.Services
 {
     public interface IRoomService
     {
-        Task<Room?> CreateRoomAsync(Guid userId, CreateRoomDto dto);
+        Task<CreateRoomResultDto> CreateRoomAsync(Guid userId, CreateRoomDto dto);
         Task<IEnumerable<Room>> GetPublicRoomsAsync();
         Task<Room?> GetRoomByIdAsync(Guid roomId);
         Task<bool> JoinRoomAsync(Guid userId, Guid roomId, string? password = null);

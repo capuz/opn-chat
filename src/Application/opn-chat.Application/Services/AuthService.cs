@@ -132,7 +132,8 @@ namespace opn_chat.Application.Services
                     AvatarUrl = user.AvatarUrl,
                     Bio = user.Bio,
                     Status = user.Status,
-                    LastSeen = user.LastSeen
+                    LastSeen = user.LastSeen,
+                    IsAdmin = user.IsAdmin
                 }
             };
         }
@@ -176,7 +177,8 @@ namespace opn_chat.Application.Services
                     AvatarUrl = user.AvatarUrl,
                     Bio = user.Bio,
                     Status = user.Status,
-                    LastSeen = user.LastSeen
+                    LastSeen = user.LastSeen,
+                    IsAdmin = user.IsAdmin
                 }
             };
         }

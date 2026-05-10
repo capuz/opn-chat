@@ -8,9 +8,10 @@ export interface UserDto {
   lastSeen: string;
   countryCode?: string;
   showFlag?: boolean;
+  isAdmin?: boolean;
 }
 
-export type MessageType = 'normal' | 'action';
+export type MessageType = 'normal' | 'action' | 'system';
 
 export interface Message {
   id?: string;

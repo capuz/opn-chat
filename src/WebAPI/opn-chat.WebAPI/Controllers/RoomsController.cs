@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 using opn_chat.Application.DTOs;
 using opn_chat.Application.Services;
+using opn_chat.Domain.Entities;
 using opn_chat.Domain.Interfaces;
+using opn_chat.WebAPI.Hubs;
 
 namespace opn_chat.WebAPI.Controllers
 {
@@ -14,11 +17,16 @@ namespace opn_chat.WebAPI.Controllers
     {
         private readonly IRoomService _roomService;
         private readonly IMessageRepository _messageRepository;
+        private readonly IHubContext<ChatHub> _chatHub;
 
-        public RoomsController(IRoomService roomService, IMessageRepository messageRepository)
+        public RoomsController(
+            IRoomService roomService,
+            IMessageRepository messageRepository,
+            IHubContext<ChatHub> chatHub)
         {
             _roomService = roomService;
             _messageRepository = messageRepository;
+            _chatHub = chatHub;
         }
 
         [HttpGet("public")]
@@ -31,7 +39,9 @@ namespace opn_chat.WebAPI.Controllers
                 Name = r.Name,
                 Description = r.Description,
                 IsPrivate = r.IsPrivate,
-                CreatedByName = r.CreatedBy?.Nickname ?? "Unknown",
+                IsSystem = r.IsSystem,
+                IsArchived = r.IsArchived,
+                CreatedByName = r.CreatedBy?.Nickname ?? "System",
                 MemberCount = r.Members?.Count ?? 0
             });
             return Ok(result);
@@ -49,7 +59,9 @@ namespace opn_chat.WebAPI.Controllers
                 Name = room.Name,
                 Description = room.Description,
                 IsPrivate = room.IsPrivate,
-                CreatedByName = room.CreatedBy?.Nickname ?? "Unknown",
+                IsSystem = room.IsSystem,
+                IsArchived = room.IsArchived,
+                CreatedByName = room.CreatedBy?.Nickname ?? "System",
                 MemberCount = room.Members?.Count ?? 0
             });
         }
@@ -60,14 +72,38 @@ namespace opn_chat.WebAPI.Controllers
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             if (userId == Guid.Empty) return Unauthorized();
 
-            var room = await _roomService.CreateRoomAsync(userId, dto);
-            return CreatedAtAction(nameof(GetRoom), new { id = room.Id }, new RoomDto
+            var result = await _roomService.CreateRoomAsync(userId, dto);
+
+            if (!result.Success)
             {
-                Id = room.Id,
-                Name = room.Name,
-                Description = room.Description,
-                IsPrivate = room.IsPrivate
+                return result.Error switch
+                {
+                    RoomCreationError.InvalidName => BadRequest(new { code = "INVALID_NAME" }),
+                    RoomCreationError.NameTaken => Conflict(new { code = "NAME_TAKEN" }),
+                    RoomCreationError.DailyLimitReached => StatusCode(429, new { code = "DAILY_LIMIT" }),
+                    RoomCreationError.ActiveLimitReached => StatusCode(429, new { code = "ACTIVE_LIMIT" }),
+                    RoomCreationError.RoomCreationDisabled => StatusCode(403, new { code = "CREATION_DISABLED" }),
+                    _ => BadRequest(new { code = "UNKNOWN_ERROR" })
+                };
+            }
+
+            var room = result.Room!;
+            var nickname = User.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
+            var systemContent = $"{nickname} created room {room.Name}";
+            var roomId = room.Id.ToString();
+
+            await _chatHub.Clients.Group(roomId).SendAsync("ReceiveMessage", new
+            {
+                Id = Guid.NewGuid().ToString(),
+                UserId = (string?)null,
+                UserName = "System",
+                Content = systemContent,
+                Type = "system",
+                Timestamp = DateTime.UtcNow,
+                ReplyToId = (string?)null
             });
+
+            return CreatedAtAction(nameof(GetRoom), new { id = room.Id }, room);
         }
 
         [HttpPost("{roomId}/join")]
@@ -115,7 +151,7 @@ namespace opn_chat.WebAPI.Controllers
                 UserId = m.UserId.ToString(),
                 UserName = m.User?.Nickname ?? m.User?.Email ?? "Unknown",
                 Content = m.Content,
-                Type = m.Type == opn_chat.Domain.Entities.MessageType.Action ? "action" : "normal",
+                Type = m.Type == MessageType.Action ? "action" : m.Type == MessageType.System ? "system" : "normal",
                 Timestamp = m.Timestamp,
                 ReplyToId = m.ReplyToId?.ToString()
             });
