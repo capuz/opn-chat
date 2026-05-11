@@ -44,7 +44,7 @@ namespace opn_chat.Application.DTOs
         bool IsBanned,
         DateTime? BanExpiresAt,
         string? BanReason,
-        int NicknameChangeCount,
+        int NicknameChangesToday,
         bool IsOnline
     );
 

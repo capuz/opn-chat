@@ -11,6 +11,7 @@ namespace opn_chat.Application.DTOs
         public bool IsSystem { get; set; }
         public bool IsArchived { get; set; }
         public string? CreatedByName { get; set; }
+        public Guid? CreatedById { get; set; }
         public int MemberCount { get; set; }
     }
 

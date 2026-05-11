@@ -1,10 +1,10 @@
 {
+  "autoMemoryEnabled": false,
   "permissions": {
     "allow": [
       "Bash(Get-ChildItem -Path \"C:\\\\dev\\\\opn-chat\" -Recurse -Force)",
       "Bash(Select-Object FullName)",
       "Bash(Sort-Object FullName)",
-      "mcp__plugin_engram_engram__mem_save",
       "Bash(dotnet build *)",
       "Bash(npx autoskills *)",
       "Bash(dotnet run *)",

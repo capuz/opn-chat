@@ -16,12 +16,16 @@ namespace opn_chat.Domain.Entities
         public DateTime LastSeen { get; set; } = DateTime.UtcNow;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
-        public int NicknameChangeCount { get; set; } = 0;
+        public int NicknameChangesToday { get; set; } = 0;
+        public DateTime? NicknameChangesDate { get; set; } = null;
+        public DateTime? NickAdUnlockedUntil { get; set; }
         public string? CountryCode { get; set; }
         public bool ShowFlag { get; set; } = false;
         public string? GlobalBadge { get; set; }
         public bool IsAdmin { get; set; } = false;
         public bool IsDeactivated { get; set; } = false;
+        public string PreferredLanguage { get; set; } = "auto";
+        public string? Timezone { get; set; }
 
         // Navigation properties
         public ICollection<RoomMember> RoomMembers { get; set; } = new List<RoomMember>();

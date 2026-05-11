@@ -16,6 +16,8 @@ namespace opn_chat.WebAPI.Hubs
         private readonly IRoomRepository _roomRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IAdminService _adminService;
+        private readonly IBoostService _boostService;
+        private readonly IConfiguration _config;
 
         public ChatHub(
             IChatService chatService,
@@ -23,7 +25,9 @@ namespace opn_chat.WebAPI.Hubs
             IRoomMemberRepository roomMemberRepo,
             IRoomRepository roomRepository,
             IUnitOfWork unitOfWork,
-            IAdminService adminService)
+            IAdminService adminService,
+            IBoostService boostService,
+            IConfiguration config)
         {
             _chatService = chatService;
             _presenceTracker = presenceTracker;
@@ -31,6 +35,8 @@ namespace opn_chat.WebAPI.Hubs
             _roomRepository = roomRepository;
             _unitOfWork = unitOfWork;
             _adminService = adminService;
+            _boostService = boostService;
+            _config = config;
         }
 
         public async Task SendMessage(string roomId, string content, string? replyToId = null, string? messageType = null)
@@ -180,7 +186,46 @@ namespace opn_chat.WebAPI.Hubs
             await Clients.Group(roomId).SendAsync("TopicChanged", new { roomId, topic, by = callerName });
         }
 
-        public override Task OnConnectedAsync() => base.OnConnectedAsync();
+        public async Task BoostRoom(string roomId)
+        {
+            var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return;
+
+            var isAdmin = Context.User?.IsInRole("admin") == true;
+            var durationMinutes = _config.GetValue<int>("BoostDurationMinutes", 20);
+            var duration = TimeSpan.FromMinutes(durationMinutes);
+
+            if (!_boostService.TryActivateBoost(roomId, userId, isAdmin, duration, out var error))
+            {
+                await Clients.Caller.SendAsync("BoostError", error);
+                return;
+            }
+
+            var expiresAt = DateTime.UtcNow.Add(duration);
+            await Clients.All.SendAsync("RoomBoosted", new { roomId, expiresAt });
+        }
+
+        public override async Task OnConnectedAsync()
+        {
+            var active = _boostService.GetActiveBoost();
+            if (active != null && active.ExpiresAt > DateTime.UtcNow)
+            {
+                await Clients.Caller.SendAsync("RoomBoosted", new
+                {
+                    roomId = active.RoomId,
+                    expiresAt = active.ExpiresAt
+                });
+            }
+            await base.OnConnectedAsync();
+        }
+        public record ClientLocaleDto(string Locale, string? Timezone);
+
+        public Task SetClientLocale(ClientLocaleDto dto)
+        {
+            // Hook futuro: locale disponible para rooms por idioma (#general-es, etc.)
+            return Task.CompletedTask;
+        }
+
         public override Task OnDisconnectedAsync(Exception? exception) => base.OnDisconnectedAsync(exception);
     }
 }

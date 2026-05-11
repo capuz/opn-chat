@@ -133,7 +133,9 @@ namespace opn_chat.Application.Services
                     Bio = user.Bio,
                     Status = user.Status,
                     LastSeen = user.LastSeen,
-                    IsAdmin = user.IsAdmin
+                    IsAdmin = user.IsAdmin,
+                    PreferredLanguage = user.PreferredLanguage,
+                    Timezone = user.Timezone,
                 }
             };
         }
@@ -178,7 +180,9 @@ namespace opn_chat.Application.Services
                     Bio = user.Bio,
                     Status = user.Status,
                     LastSeen = user.LastSeen,
-                    IsAdmin = user.IsAdmin
+                    IsAdmin = user.IsAdmin,
+                    PreferredLanguage = user.PreferredLanguage,
+                    Timezone = user.Timezone,
                 }
             };
         }

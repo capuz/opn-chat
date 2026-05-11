@@ -73,7 +73,7 @@ namespace opn_chat.Infrastructure.Services
                 .Select(u => new
                 {
                     u.Id, u.Nickname, u.Email, u.CountryCode, u.GlobalBadge,
-                    u.CreatedAt, u.LastSeen, u.Status, u.IsAdmin, u.IsDeactivated, u.NicknameChangeCount,
+                    u.CreatedAt, u.LastSeen, u.Status, u.IsAdmin, u.IsDeactivated, u.NicknameChangesToday,
                     ActiveBan = u.BansReceived
                         .Where(b => b.IsActive && (b.ExpiresAt == null || b.ExpiresAt > DateTime.UtcNow))
                         .OrderByDescending(b => b.BannedAt)
@@ -87,7 +87,7 @@ namespace opn_chat.Infrastructure.Services
                 u.Id, u.Nickname, u.Email, u.CountryCode, u.GlobalBadge,
                 u.CreatedAt, u.LastSeen, u.Status, u.IsAdmin, u.IsDeactivated,
                 u.ActiveBan != null, u.ActiveBan?.ExpiresAt, u.ActiveBan?.Reason,
-                u.NicknameChangeCount, onlineIds.Contains(u.Id.ToString())));
+                u.NicknameChangesToday, onlineIds.Contains(u.Id.ToString())));
 
             return new PagedResult<AdminUserDto>(items, total, page, pageSize);
         }
@@ -156,7 +156,8 @@ namespace opn_chat.Infrastructure.Services
         {
             var user = await _db.Users.FindAsync(userId);
             if (user == null) return;
-            user.NicknameChangeCount = 0;
+            user.NicknameChangesToday = 0;
+            user.NicknameChangesDate = null;
             await _db.SaveChangesAsync();
             await LogActionAsync(adminId, adminNick, "ResetNicknameChanges", "user", userId.ToString(), user.Nickname, null);
         }

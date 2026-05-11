@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react';
 import * as signalR from '@microsoft/signalr';
 import type { Message } from '../types/auth';
@@ -11,7 +11,13 @@ import { privateChatService } from '../services/privateChat.service';
 import { roomService } from '../services/room.service';
 import { apiService } from '../services/api.service';
 import { chatSounds } from '../utils/chatSounds';
-import { t } from '../i18n';
+import { useTranslation } from '../i18n/I18nContext';
+import type { SupportedLanguage } from '../i18n/I18nContext';
+import { useMonetization } from '../hooks/useMonetization';
+import { RewardModal } from '../components/RewardModal';
+import { UpgradeModal } from '../components/UpgradeModal';
+import { RoomBoostCard } from '../components/RoomBoostCard';
+import { GlobalAnnouncementBanner } from '../components/GlobalAnnouncementBanner';
 
 const api = apiService.getAxiosInstance();
 
@@ -100,9 +106,6 @@ const getBadgeLabel = (badge?: string | null, createdAt?: string | null): string
   return null;
 };
 
-const fmtTime = (ts: string) =>
-  new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
 const parseInline = (text: string, nextKey: () => number): (string | JSX.Element)[] => {
   const parts: (string | JSX.Element)[] = [];
   const regex = /(\*[^*]+\*|__[^_]+__|_[^_]+_|~[^~]+~|`[^`]+`)/g;
@@ -157,7 +160,6 @@ const getInitialTheme = (): 'dark' | 'light' => {
 
 // ─── Shared input style (modal forms) ────────────────────────────────────────
 
-
 const modalInput: React.CSSProperties = {
   width: '100%',
   border: '1px solid var(--ch-border-2)',
@@ -177,11 +179,21 @@ const modalInput: React.CSSProperties = {
 const sortAsc = (msgs: PrivateMessage[]) =>
   [...msgs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
+// ─── Language options ─────────────────────────────────────────────────────────
+
+const LANG_OPTIONS: { value: SupportedLanguage | 'auto'; label: string }[] = [
+  { value: 'auto',  label: '🌐 Auto' },
+  { value: 'es',    label: 'ES' },
+  { value: 'en',    label: 'EN' },
+  { value: 'pt-BR', label: 'PT' },
+];
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 const ChatPage = () => {
   const navigate  = useNavigate();
   const { user, isAuthenticated, loading, refreshAuth } = useAuth();
+  const { t, language, locale, timezone, autoDetect, setLanguage, formatDate } = useTranslation();
 
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
 
@@ -198,10 +210,11 @@ const ChatPage = () => {
   const [privatesExpanded,  setPrivatesExpanded]  = useState(false);
   const [hoveredMsg,        setHoveredMsg]        = useState<string | null>(null);
   const [deleteMenu,        setDeleteMenu]        = useState<{ msgId: string; x: number; y: number } | null>(null);
-  const [rooms,             setRooms]             = useState<{ id: string; name: string; description: string }[]>([]);
+  const [rooms,             setRooms]             = useState<{ id: string; name: string; description: string; createdById?: string }[]>([]);
   const [onlineUsers,       setOnlineUsers]       = useState<{ id: string; nickname: string; isOnline: boolean; countryCode?: string; showFlag?: boolean; awayMessage?: string; badge?: string; createdAt?: string }[]>([]);
   const [presenceReady,     setPresenceReady]     = useState(false);
   const [soundEnabled,      setSoundEnabled]      = useState(() => chatSounds.isEnabled());
+  const [announcementMsg,   setAnnouncementMsg]   = useState('');
 
   const [showCreateRoom,      setShowCreateRoom]      = useState(false);
   const [newRoomName,         setNewRoomName]         = useState('');
@@ -217,6 +230,15 @@ const ChatPage = () => {
   const [nicknameSaving,      setNicknameSaving]      = useState(false);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  // ── Monetization ──
+  const monetization = useMonetization();
+  const [showRewardModal,   setShowRewardModal]   = useState<'room' | 'nickname' | 'boost' | null>(null);
+  const [showUpgradeModal,  setShowUpgradeModal]  = useState(false);
+  const [isWatchingAd,      setIsWatchingAd]      = useState(false);
+  const [pendingBoostRoomId, setPendingBoostRoomId] = useState<string | null>(null);
+  const [hoveredRoom,       setHoveredRoom]       = useState<string | null>(null);
+  const [activeBoost,       setActiveBoost]       = useState<{ roomId: string; expiresAt: number } | null>(null);
 
   const [showFlag,      setShowFlag]      = useState(false);
   const [countryCode,   setCountryCode]   = useState('');
@@ -237,8 +259,8 @@ const ChatPage = () => {
 
   // ── Theme ──
   const toggleTheme = () =>
-    setTheme(t => {
-      const next = t === 'dark' ? 'light' : 'dark';
+    setTheme(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
       localStorage.setItem('chat-theme', next);
       return next;
     });
@@ -299,6 +321,15 @@ const ChatPage = () => {
       .catch(() => {});
   }, [isAuthenticated]);
 
+  // ── Announcement banner ──
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    monetization.resetDismissedAnnouncements();
+    api.get<{ message: string }>('/api/settings/announcement')
+      .then(r => setAnnouncementMsg(r.data.message))
+      .catch(() => {});
+  }, [isAuthenticated]);
+
   // ── Profile (nickname changes + flag preference) ──
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -320,13 +351,24 @@ const ChatPage = () => {
         chatSounds.play('mention');
       }
     });
+    conn.on('RoomBoosted', ({ roomId, expiresAt }: { roomId: string; expiresAt: string }) => {
+      const expiresAtMs = new Date(expiresAt).getTime();
+      setActiveBoost({ roomId, expiresAt: expiresAtMs });
+      monetization.boostRoom(roomId);
+    });
+    conn.on('RoomBoostExpired', (_payload: { roomId: string }) => {
+      setActiveBoost(null);
+    });
+    conn.on('BoostError', (_error: string) => {
+      // servidor rechazó el boost — no hacer nada, el estado local ya no cambió
+    });
     const connectAndLoad = async () => {
       try {
         setConnectionStatus('Connecting...');
         await startConnection('chat');
         setConnectionStatus('Connected');
         const res = await api.get('/api/rooms/public');
-        const loaded = res.data.map((r: any) => ({ id: r.id, name: r.name, description: r.description }));
+        const loaded = res.data.map((r: any) => ({ id: r.id, name: r.name, description: r.description, createdById: r.createdById }));
         setRooms(loaded);
         if (loaded.length > 0) {
           const firstId = loaded[0].id;
@@ -400,12 +442,17 @@ const ChatPage = () => {
       } as import('../types/auth').Message]);
     });
 
+    nc.on('AnnouncementBannerUpdated', (data: { message: string }) => {
+      setAnnouncementMsg(data.message);
+    });
+
     startConnection('notifications').catch(() => {});
     return () => {
       nc.off('NewDirectMessage');
       nc.off('PrivateMessageDeleted');
       nc.off('Kicked');
       nc.off('GlobalAnnouncement');
+      nc.off('AnnouncementBannerUpdated');
       stopConnection('notifications');
     };
   }, [isAuthenticated]); // Solo se reconecta al login/logout — no al cambiar de modo
@@ -505,15 +552,21 @@ const ChatPage = () => {
 
   const handleNick = async (newNick: string) => {
     if (!newNick.trim()) { injectLocal('Usage: /nick <nickname>'); return; }
-    if (nicknameChangesLeft === 0) {
+    if (nicknameChangesLeft === 0 && monetization.nickChangesLeftToday === 0) {
       chatSounds.play('error');
-      injectLocal('You have used all 3 nickname changes allowed per account.');
+      injectLocal(t('cmd.nick.noChanges'));
+      setShowRewardModal('nickname');
       return;
     }
     const trimmed = newNick.trim();
-    if (trimmed.length < 2 || trimmed.length > 30) {
+    if (trimmed.length < 2) {
       chatSounds.play('error');
-      injectLocal('Nickname must be 2–30 characters.');
+      injectLocal(t('cmd.nick.tooShort'));
+      return;
+    }
+    if (trimmed.length > 30) {
+      chatSounds.play('error');
+      injectLocal(t('cmd.nick.tooLong'));
       return;
     }
     try {
@@ -523,10 +576,11 @@ const ChatPage = () => {
       if (stored) { const p = JSON.parse(stored); p.nickname = trimmed; localStorage.setItem('user', JSON.stringify(p)); }
       refreshAuth();
       chatSounds.play('success');
-      injectLocal(`You are now known as ${trimmed}. Changes left: ${res.data.changesLeft}`);
+      const left = res.data.changesLeft as number;
+      injectLocal(t('cmd.nick.changed', { nick: trimmed, n: left, s: left !== 1 ? 's' : '' }));
     } catch (err: any) {
       chatSounds.play('error');
-      injectLocal(err?.response?.data?.error ?? 'Failed to change nickname.');
+      injectLocal(err?.response?.data?.error ?? t('cmd.nick.error'));
     }
   };
 
@@ -536,18 +590,24 @@ const ChatPage = () => {
     const room = rooms.find(r => r.name.toLowerCase() === name.toLowerCase());
     if (!room) {
       chatSounds.play('error');
-      injectLocal(`No room named ${name} found.`);
+      injectLocal(t('cmd.join.notFound', { name }));
       return;
     }
     chatSounds.play('join');
+    injectLocal(t('cmd.join.joined', { name }));
     switchRoom(room.id);
   };
 
   const handleList = () => {
-    const lines = rooms.length > 0
-      ? ['Available rooms:', ...rooms.map(r => `  ${r.name}${r.description ? ` — ${r.description}` : ''}`)]
-      : ['No rooms available.'];
-    injectLocal(lines.join('\n'));
+    if (rooms.length === 0) {
+      injectLocal(t('cmd.list.header') + '\n' + t('chat.tooManyRooms'));
+    } else {
+      const lines = [
+        t('cmd.list.header'),
+        ...rooms.map(r => t('cmd.list.room', { name: r.name, desc: r.description || '' })),
+      ];
+      injectLocal(lines.join('\n'));
+    }
   };
 
   const handleMsg = async (args: string) => {
@@ -555,32 +615,22 @@ const ChatPage = () => {
     const nick = (spaceIdx === -1 ? args : args.slice(0, spaceIdx)).trim();
     const text = spaceIdx === -1 ? '' : args.slice(spaceIdx + 1).trim();
     if (!nick) { injectLocal('Usage: /msg <nick> [message]'); return; }
-    const user = onlineUsers.find(u => u.nickname.toLowerCase() === nick.toLowerCase());
-    if (!user) {
+    const onlineUser = onlineUsers.find(u => u.nickname.toLowerCase() === nick.toLowerCase());
+    if (!onlineUser) {
       chatSounds.play('error');
-      injectLocal(`User "${nick}" not found online.`);
+      injectLocal(t('cmd.msg.notFound', { name: nick }));
       return;
     }
-    await startPrivateChat(user.id, user.nickname);
+    await startPrivateChat(onlineUser.id, onlineUser.nickname);
     chatSounds.play('privateMessage');
+    injectLocal(t('cmd.msg.opened', { name: nick }));
     if (text) {
-      try { await privateChatService.sendMessage(user.id, text); } catch { /* ignore */ }
+      try { await privateChatService.sendMessage(onlineUser.id, text); } catch { /* ignore */ }
     }
   };
 
   const handleHelp = () => {
-    injectLocal([
-      'Available commands:',
-      '  /me <text>         — Send an action message (* Nick text)',
-      '  /away [message]    — Set yourself as away',
-      '  /back              — Clear away status',
-      '  /clear             — Clear chat messages locally',
-      '  /nick <nickname>   — Change your nickname (max 3 changes per account)',
-      '  /join #roomname    — Switch to a room',
-      '  /list              — List available rooms',
-      '  /msg <nick> [msg]  — Open a DM (optionally send first message)',
-      '  /help              — Show this help',
-    ].join('\n'));
+    injectLocal(t('cmd.help.text'));
   };
 
   const loadMessages = async (roomId: string) => {
@@ -609,7 +659,7 @@ const ChatPage = () => {
       if (cmd === 'help')  { handleHelp(); return; }
       // Unknown slash command
       chatSounds.play('error');
-      injectLocal(`Unknown command: /${cmd}. Type /help for available commands.`);
+      injectLocal(t('cmd.unknownCommand', { cmd }));
       return;
     }
 
@@ -698,22 +748,29 @@ const ChatPage = () => {
         isPrivate: newRoomIsPrivate,
         password: newRoomIsPrivate ? newRoomPassword : undefined,
       });
-      setRooms(prev => [...prev, { id: r.id, name: r.name, description: r.description || '' }]);
+      setRooms(prev => [...prev, { id: r.id, name: r.name, description: r.description || '', createdById: user?.id }]);
+      monetization.grantBoostToken(r.id);
       await switchRoom(r.id);
       setShowCreateRoom(false);
       setNewRoomName(''); setNewRoomDescription('');
       setNewRoomIsPrivate(false); setNewRoomPassword('');
       setCreateRoomError('');
+      // Track free or ad-unlocked slot usage
+      if (monetization.hasActiveRoomSlot) monetization.consumeRoomSlot();
+      else monetization.consumeFreeRoom();
     } catch (err: any) {
       const code = err?.code as string | undefined;
+      if (code === 'ACTIVE_LIMIT' || code === 'DAILY_LIMIT') {
+        setShowCreateRoom(false);
+        setShowRewardModal('room');
+        return;
+      }
       const errorMessages: Record<string, string> = {
-        INVALID_NAME: 'Invalid name. Use only lowercase letters, numbers, - and _ (e.g. my-room).',
-        NAME_TAKEN: 'That room name is already taken.',
-        DAILY_LIMIT: 'You can only create 3 rooms per day.',
-        ACTIVE_LIMIT: 'You have reached the limit of 10 active rooms.',
-        CREATION_DISABLED: 'Room creation is currently disabled by admins.',
+        INVALID_NAME:       t('chat.roomNameInvalid'),
+        NAME_TAKEN:         t('chat.roomNameTaken'),
+        CREATION_DISABLED:  t('chat.tooManyRooms'),
       };
-      setCreateRoomError(errorMessages[code ?? ''] ?? 'Could not create room. Try again.');
+      setCreateRoomError(errorMessages[code ?? ''] ?? t('chat.tooManyRooms'));
     }
   };
 
@@ -749,14 +806,15 @@ const ChatPage = () => {
   const saveNickname = async () => {
     const trimmed = newNickname.trim();
     if (trimmed.length < 2 || trimmed.length > 30) {
-      setNicknameError('Debe tener entre 2 y 30 caracteres.');
+      setNicknameError(t('cmd.nick.tooShort'));
       return;
     }
     setNicknameSaving(true);
     setNicknameError('');
     try {
       const res = await api.put('/api/profile/nickname', { nickname: trimmed });
-      setNicknameChangesLeft(res.data.changesLeft);
+      setNicknameChangesLeft(res.data.changesLeft ?? 0);
+      monetization.consumeNickChange();
       const stored = localStorage.getItem('user');
       if (stored) {
         const parsed = JSON.parse(stored);
@@ -766,13 +824,59 @@ const ChatPage = () => {
       refreshAuth();
       setShowNicknameModal(false);
     } catch (err: any) {
-      setNicknameError(err?.response?.data?.error ?? 'Error al guardar el nickname.');
+      setNicknameError(err?.response?.data?.error ?? t('cmd.nick.error'));
     } finally {
       setNicknameSaving(false);
     }
   };
 
+  const handleWatchAd = async () => {
+    setIsWatchingAd(true);
+    await new Promise(r => setTimeout(r, 2000));
+
+    if (showRewardModal === 'nickname') {
+      try {
+        const res = await api.post('/api/profile/nick-ad-unlock');
+        monetization.watchAdForNickChange(new Date(res.data.unlockedUntil).getTime());
+      } catch {
+        monetization.watchAdForNickChange(Date.now() + 12 * 60 * 60 * 1000);
+      }
+      setIsWatchingAd(false);
+      setShowRewardModal(null);
+      openNicknameModal();
+    } else if (showRewardModal === 'boost' && pendingBoostRoomId) {
+      const roomId = pendingBoostRoomId;
+      monetization.grantBoostToken(roomId);
+      monetization.consumeBoostToken(roomId);
+      setIsWatchingAd(false);
+      setShowRewardModal(null);
+      setPendingBoostRoomId(null);
+      const conn = getSignalRConnection('chat');
+      try {
+        await conn.invoke('BoostRoom', roomId);
+      } catch { /* BoostError manejado via SignalR */ }
+    } else {
+      setIsWatchingAd(false);
+      setShowRewardModal(null);
+    }
+  };
+
+  const handleSetLanguage = (lang: SupportedLanguage | 'auto') => {
+    setLanguage(lang);
+    api.put('/api/profile/preferences', {
+      preferredLanguage: lang,
+      timezone,
+    }).catch(() => {});
+  };
+
   if (loading || !isAuthenticated || !user) return null;
+
+  const sortedRooms = useMemo(() =>
+    [...rooms].sort((a, b) =>
+      (activeBoost?.roomId === b.id ? 1 : 0) - (activeBoost?.roomId === a.id ? 1 : 0)
+    ),
+    [rooms, activeBoost] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const partnerNick  = partnerNickname || onlineUsers.find(u => u.id === privatePartner)?.nickname || conversations.find(c => c.userId === privatePartner)?.nickname || privatePartner;
   const deleteMenuMsg = deleteMenu ? privateMessages.find(m => m.id === deleteMenu.msgId) : null;
@@ -780,7 +884,9 @@ const ChatPage = () => {
   const onlineCount  = onlineUsers.filter(u => u.isOnline).length;
   const isConnected  = connectionStatus === 'Connected';
   const isDark       = theme === 'dark';
+  const isAdmin      = user?.isAdmin === true;
   const activeRoomName = rooms.find(r => r.id === activeRoom)?.name ?? '—';
+  const activeRoomOwner = rooms.find(r => r.id === activeRoom)?.createdById === user?.id;
 
   // Dot glow in dark mode (online users / my status)
   const dotGlow = isDark ? '0 0 6px var(--ch-online-dot)' : 'none';
@@ -808,7 +914,7 @@ const ChatPage = () => {
             opn·chat
           </span>
           <span
-            title={isConnected ? 'Connected' : connectionStatus}
+            title={isConnected ? t('chat.connected') : connectionStatus}
             style={{
               display: 'inline-block',
               width: 7, height: 7,
@@ -834,14 +940,14 @@ const ChatPage = () => {
               onMouseEnter={e => (e.currentTarget.style.color = 'var(--ch-text)')}
               onMouseLeave={e => (e.currentTarget.style.color = 'var(--ch-text-2)')}
             >
-              <IconBack /> global
+              <IconBack /> {t('chat.global')}
             </button>
           )}
 
           {/* Theme toggle */}
           <button
             onClick={toggleTheme}
-            title={isDark ? 'Light mode' : 'Dark mode'}
+            title={isDark ? t('chat.lightMode') : t('chat.darkMode')}
             style={{
               background: 'none',
               border: '1px solid var(--ch-border-2)',
@@ -867,10 +973,27 @@ const ChatPage = () => {
             onMouseEnter={e => (e.currentTarget.style.color = 'var(--ch-text)')}
             onMouseLeave={e => (e.currentTarget.style.color = 'var(--ch-text-2)')}
           >
-            sign out
+            {t('common.logout')}
           </button>
         </div>
       </header>
+
+      {/* ── GLOBAL ANNOUNCEMENT BANNER ── */}
+      {announcementMsg && (
+        <GlobalAnnouncementBanner
+          id={`banner-${announcementMsg.slice(0, 16)}`}
+          message={announcementMsg}
+          type="event"
+          animation="ticker"
+          isDark={isDark}
+          onDismiss={() => monetization.dismissAnnouncement(`banner-${announcementMsg.slice(0, 16)}`)}
+          isDismissed={monetization.isAnnouncementDismissed(`banner-${announcementMsg.slice(0, 16)}`)}
+          onRoomClick={(roomName) => {
+            const found = rooms.find(r => r.name.toLowerCase() === roomName.toLowerCase());
+            if (found) switchRoom(found.id);
+          }}
+        />
+      )}
 
       {/* ── BODY ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -890,11 +1013,11 @@ const ChatPage = () => {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <span style={{ fontWeight: 600, fontSize: 10, color: 'var(--ch-text-2)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-              Rooms
+              {t('chat.rooms')}
             </span>
             <button
-              onClick={() => setShowCreateRoom(true)}
-              title="New room"
+              onClick={() => monetization.canCreateRoom ? setShowCreateRoom(true) : setShowRewardModal('room')}
+              title={t('chat.newRoom')}
               style={{
                 width: 18, height: 18, borderRadius: 4,
                 background: 'var(--ch-accent)', color: 'var(--ch-btn-text)',
@@ -906,35 +1029,67 @@ const ChatPage = () => {
           </div>
 
           <nav style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-            {rooms.map(room => {
-              const active = chatMode === 'global' && activeRoom === room.id;
+            {sortedRooms.map(room => {
+              const active      = chatMode === 'global' && activeRoom === room.id;
+              const boosted     = activeBoost?.roomId === room.id;
+              const isOwner     = room.createdById === user?.id;
+              const globalBoostActive = !!activeBoost && !isAdmin;
               return (
-                <button key={room.id} onClick={() => switchRoom(room.id)} style={{
-                  width: '100%', textAlign: 'left',
-                  padding: '6px 12px',
-                  paddingLeft: active ? 10 : 12,
-                  border: 'none',
-                  borderLeft: active ? '2px solid var(--ch-accent)' : '2px solid transparent',
-                  cursor: 'pointer',
-                  background: active ? 'var(--ch-accent-dim)' : 'transparent',
-                  display: 'flex', alignItems: 'center', gap: 7,
-                  color: active ? 'var(--ch-accent)' : 'var(--ch-text-2)',
-                  transition: 'background 0.1s ease, color 0.1s ease',
-                }}
-                  onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--ch-hover)'; }}
-                  onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                <div key={room.id}
+                  onMouseEnter={() => setHoveredRoom(room.id)}
+                  onMouseLeave={() => setHoveredRoom(null)}
                 >
-                  <IconHash />
-                  <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {room.name}
-                  </span>
-                </button>
+                  <button onClick={() => switchRoom(room.id)} style={{
+                    width: '100%', textAlign: 'left',
+                    padding: '6px 12px',
+                    paddingLeft: active ? 10 : 12,
+                    border: 'none',
+                    borderLeft: active
+                      ? '2px solid var(--ch-accent)'
+                      : boosted
+                        ? '2px solid var(--ch-boost-border)'
+                        : '2px solid transparent',
+                    cursor: 'pointer',
+                    background: active
+                      ? 'var(--ch-accent-dim)'
+                      : boosted
+                        ? 'var(--ch-boost-bg)'
+                        : 'transparent',
+                    display: 'flex', alignItems: 'center', gap: 7,
+                    color: active ? 'var(--ch-accent)' : 'var(--ch-text-2)',
+                    transition: 'background 0.1s ease, color 0.1s ease',
+                  }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = boosted ? 'var(--ch-boost-bg)' : 'var(--ch-hover)'; }}
+                    onMouseLeave={e => { if (!active) e.currentTarget.style.background = boosted ? 'var(--ch-boost-bg)' : 'transparent'; }}
+                  >
+                    <IconHash />
+                    <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                      {room.name}
+                    </span>
+                    {boosted && (
+                      <span className="ch-boost-badge" style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--ch-accent)', flexShrink: 0 }}>
+                        BOOST
+                      </span>
+                    )}
+                  </button>
+                  {hoveredRoom === room.id && (
+                    <RoomBoostCard
+                      roomId={room.id}
+                      isBoosted={boosted}
+                      boostExpiry={activeBoost?.roomId === room.id ? activeBoost.expiresAt : null}
+                      isDark={isDark}
+                      isOwner={isOwner}
+                      globalBoostActive={globalBoostActive}
+                      onBoost={() => { setPendingBoostRoomId(room.id); setShowRewardModal('boost'); }}
+                    />
+                  )}
+                </div>
               );
             })}
           </nav>
 
           <div style={{ borderTop: '1px solid var(--ch-border)', padding: '5px 12px', fontSize: 10, color: 'var(--ch-text-3)' }}>
-            {rooms.length} room{rooms.length !== 1 ? 's' : ''}
+            {t('chat.roomCount', { n: rooms.length, s: rooms.length !== 1 ? 's' : '' })}
           </div>
 
           {/* ── Privates section ── */}
@@ -949,7 +1104,7 @@ const ChatPage = () => {
               }}
             >
               <span style={{ fontWeight: 600, fontSize: 10, color: 'var(--ch-text-2)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                Privates
+                {t('chat.privates')}
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 {totalUnreadDMs > 0 && (
@@ -972,7 +1127,7 @@ const ChatPage = () => {
               <div style={{ overflowY: 'auto', maxHeight: 200 }}>
                 {conversations.length === 0 ? (
                   <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--ch-text-3)', fontStyle: 'italic' }}>
-                    No conversations yet
+                    {t('chat.noConversations')}
                   </div>
                 ) : conversations.map(conv => {
                   const isActive = chatMode === 'private' && privatePartner === conv.userId;
@@ -1025,20 +1180,114 @@ const ChatPage = () => {
           <div style={{
             background: 'var(--ch-bg-2)',
             borderBottom: '1px solid var(--ch-border)',
-            padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 8,
+            padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
           }}>
-            {chatMode === 'private' ? (
-              <>
-                <span style={{ color: 'var(--ch-text-3)' }}><IconUser /></span>
-                <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ch-text)' }}>{partnerNick}</span>
-                <span style={{ fontSize: 11, color: 'var(--ch-text-2)', marginLeft: 2 }}>· private</span>
-              </>
-            ) : (
-              <>
-                <span style={{ color: 'var(--ch-accent)', opacity: 0.6 }}><IconHash /></span>
-                <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ch-text)' }}>{activeRoomName}</span>
-                <span style={{ fontSize: 11, color: 'var(--ch-text-2)', marginLeft: 2 }}>· {onlineCount} online</span>
-              </>
+            {/* LEFT: canal / DM */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              {chatMode === 'private' ? (
+                <>
+                  <span style={{ color: 'var(--ch-text-3)' }}><IconUser /></span>
+                  <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ch-text)' }}>{partnerNick}</span>
+                  <span style={{ fontSize: 11, color: 'var(--ch-text-2)', marginLeft: 2 }}>· {t('chat.privateLabel')}</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ color: 'var(--ch-accent)', opacity: 0.6 }}><IconHash /></span>
+                  <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ch-text)' }}>{activeRoomName}</span>
+                  <span style={{ fontSize: 11, color: 'var(--ch-text-2)', marginLeft: 2 }}>· {t('chat.onlineCount', { n: onlineCount })}</span>
+                </>
+              )}
+            </div>
+
+            {/* RIGHT: íconos de acción (solo en modo global) */}
+            {chatMode === 'global' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+
+                {/* ── ADS ICON: visible cuando nicknameChangesLeft === 0 ── */}
+                {nicknameChangesLeft === 0 && (() => {
+                  const inCooldown = monetization.nickAdExpiry !== null && monetization.nickAdExpiry > Date.now();
+                  const cooldownMs = inCooldown && monetization.nickAdExpiry ? monetization.nickAdExpiry - Date.now() : 0;
+                  const cooldownH  = Math.floor(cooldownMs / 3_600_000);
+                  const cooldownM  = Math.floor((cooldownMs % 3_600_000) / 60_000);
+                  return (
+                    <button
+                      onClick={inCooldown ? undefined : () => setShowRewardModal('nickname')}
+                      title={inCooldown
+                        ? t('monetize.adsIconCooldown', { h: cooldownH, m: cooldownM })
+                        : t('monetize.adsIconTitle')}
+                      style={{
+                        background: 'none',
+                        border: '1px solid var(--ch-border-2)',
+                        borderRadius: 6, cursor: inCooldown ? 'not-allowed' : 'pointer',
+                        color: inCooldown ? 'var(--ch-text-3)' : 'var(--ch-text-2)',
+                        padding: '4px 7px',
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        fontSize: 11, fontWeight: 500,
+                        opacity: inCooldown ? 0.5 : 1,
+                        transition: 'border-color 0.15s, color 0.15s',
+                      }}
+                      onMouseEnter={e => { if (!inCooldown) { e.currentTarget.style.borderColor = 'var(--ch-accent)'; e.currentTarget.style.color = 'var(--ch-accent)'; } }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--ch-border-2)'; e.currentTarget.style.color = inCooldown ? 'var(--ch-text-3)' : 'var(--ch-text-2)'; }}
+                    >
+                      📺
+                    </button>
+                  );
+                })()}
+
+                {/* ── BOOST ICON: visible para el owner del room activo ── */}
+                {activeRoomOwner && (() => {
+                  const isBoosted   = activeBoost?.roomId === activeRoom;
+                  const hasToken    = monetization.hasBoostToken(activeRoom);
+                  const otherBoosted = !!activeBoost && !isBoosted;
+                  const blocked     = otherBoosted && !isAdmin;
+
+                  const minsLeft = isBoosted && activeBoost
+                    ? Math.max(0, Math.ceil((activeBoost.expiresAt - Date.now()) / 60_000))
+                    : 0;
+
+                  const handleBoostClick = async () => {
+                    if (blocked || isBoosted) return;
+                    if (hasToken) {
+                      monetization.consumeBoostToken(activeRoom);
+                      const conn = getSignalRConnection('chat');
+                      try { await conn.invoke('BoostRoom', activeRoom); } catch { /* BoostError via SignalR */ }
+                    } else {
+                      setPendingBoostRoomId(activeRoom);
+                      setShowRewardModal('boost');
+                    }
+                  };
+
+                  return (
+                    <button
+                      onClick={handleBoostClick}
+                      disabled={blocked || isBoosted}
+                      title={
+                        isBoosted  ? t('monetize.boostActive', { m: minsLeft }) :
+                        blocked    ? t('monetize.boostBlocked') :
+                        hasToken   ? t('monetize.boostChannelTitle') :
+                                     t('monetize.boostNoToken')
+                      }
+                      style={{
+                        background: 'none',
+                        border: `1px solid ${isBoosted ? 'var(--ch-accent)' : blocked ? 'var(--ch-border)' : 'var(--ch-border-2)'}`,
+                        borderRadius: 6,
+                        cursor: blocked || isBoosted ? 'not-allowed' : 'pointer',
+                        color: isBoosted ? 'var(--ch-accent)' : blocked ? 'var(--ch-text-3)' : 'var(--ch-text-2)',
+                        padding: '4px 7px',
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        fontSize: 11, fontWeight: isBoosted ? 700 : 500,
+                        opacity: blocked ? 0.45 : 1,
+                        transition: 'border-color 0.15s, color 0.15s',
+                      }}
+                      onMouseEnter={e => { if (!blocked && !isBoosted) { e.currentTarget.style.borderColor = 'var(--ch-accent)'; e.currentTarget.style.color = 'var(--ch-accent)'; } }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = isBoosted ? 'var(--ch-accent)' : blocked ? 'var(--ch-border)' : 'var(--ch-border-2)'; e.currentTarget.style.color = isBoosted ? 'var(--ch-accent)' : blocked ? 'var(--ch-text-3)' : 'var(--ch-text-2)'; }}
+                    >
+                      {isBoosted ? `🏆 ${minsLeft}m` : '⚡'}
+                    </button>
+                  );
+                })()}
+
+              </div>
             )}
           </div>
 
@@ -1046,14 +1295,14 @@ const ChatPage = () => {
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0', background: 'var(--ch-bg)' }}>
             {(chatMode === 'global' ? globalMessages : privateMessages).length === 0 ? (
               <div style={{ textAlign: 'center', marginTop: 64, color: 'var(--ch-text-2)' }}>
-                <div style={{ fontSize: 13 }}>No messages yet. Say hello! 👋</div>
+                <div style={{ fontSize: 13 }}>{t('chat.noMessages')}</div>
               </div>
             ) : chatMode === 'global' ? (
               globalMessages.map((msg, i) => {
                 const isMe = msg.userId === user.id;
                 const isAction = msg.type === 'action';
                 const isSystem = msg.type === 'system';
-                const nick = isMe ? (user.nickname ?? 'You') : (msg.userName ?? 'User');
+                const nick = isMe ? (user.nickname ?? t('chat.you')) : (msg.userName ?? 'User');
                 return (
                   <div key={i} style={{
                     padding: '3px 16px',
@@ -1061,7 +1310,7 @@ const ChatPage = () => {
                     display: 'flex', alignItems: 'baseline', gap: 8,
                   }}>
                     <span style={{ color: 'var(--ch-text-3)', fontSize: 10, flexShrink: 0, fontFamily: "'DM Mono', monospace" }}>
-                      {fmtTime(msg.timestamp)}
+                      {formatDate(msg.timestamp, { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     {isSystem ? (
                       <span style={{ fontSize: 12, color: 'var(--ch-text-3)', fontStyle: 'italic', wordBreak: 'break-word', lineHeight: 1.55 }}>
@@ -1106,17 +1355,17 @@ const ChatPage = () => {
                     }}
                   >
                     <span style={{ color: 'var(--ch-text-3)', fontSize: 10, flexShrink: 0, fontFamily: "'DM Mono', monospace" }}>
-                      {fmtTime(msg.timestamp)}
+                      {formatDate(msg.timestamp, { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     {isDeleted ? (
                       <span style={{ fontSize: 13, color: 'var(--ch-text-3)', fontStyle: 'italic' }}>
-                        {t('thisDeleted')}
+                        {t('chat.thisDeleted')}
                       </span>
                     ) : (
                       <>
                         <span style={{ fontWeight: 600, fontSize: 12, flexShrink: 0, color: isMe ? 'var(--ch-me)' : nickColor(msg.senderId ?? '') }}>
                           {isMe
-                            ? `${user.nickname ?? t('you')} (${t('you')})`
+                            ? `${user.nickname ?? t('chat.you')} (${t('chat.you')})`
                             : (msg.senderName ?? 'User')}
                         </span>
                         <span style={{ fontSize: 13, color: 'var(--ch-text)', wordBreak: 'break-word', lineHeight: 1.55 }}>
@@ -1134,7 +1383,7 @@ const ChatPage = () => {
                           cursor: 'pointer', color: 'var(--ch-text-3)', fontSize: 13, lineHeight: 1, padding: '4px 6px',
                         display: 'flex', alignItems: 'center',
                         }}
-                        title="Delete message"
+                        title={t('chat.deleteMessage')}
                       >
                         <IconTrash />
                       </button>
@@ -1164,7 +1413,7 @@ const ChatPage = () => {
                   onEmojiClick={onEmojiClick}
                   theme={isDark ? Theme.DARK : Theme.LIGHT}
                   lazyLoadEmojis
-                  searchPlaceholder="Search emoji..."
+                  searchPlaceholder={t('chat.searchEmoji')}
                   width={300}
                   height={370}
                 />
@@ -1195,7 +1444,7 @@ const ChatPage = () => {
               value={inputMessage}
               onChange={e => setInputMessage(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-              placeholder={chatMode === 'private' ? `Message ${partnerNick}...` : 'Type a message...'}
+              placeholder={chatMode === 'private' ? t('chat.messageName', { name: partnerNick }) : t('chat.typeMessage')}
               className="ch-input"
               style={{
                 flex: 1,
@@ -1220,7 +1469,7 @@ const ChatPage = () => {
                 fontFamily: 'inherit',
               }}
             >
-              <IconSend /> Send
+              <IconSend /> {t('common.send')}
             </button>
           </div>
         </main>
@@ -1239,14 +1488,14 @@ const ChatPage = () => {
             padding: '7px 12px',
           }}>
             <span style={{ fontWeight: 600, fontSize: 10, color: 'var(--ch-text-2)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-              Online
+              {t('chat.online')}
             </span>
           </div>
 
           {onlineUsers.some(u => u.isOnline) && (
             <div style={{ padding: '6px 0 2px' }}>
               <div style={{ padding: '0 12px 3px', fontSize: 9, fontWeight: 600, color: 'var(--ch-online-dot)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Active ({onlineUsers.filter(u => u.isOnline).length})
+                {t('chat.active', { n: onlineUsers.filter(u => u.isOnline).length })}
               </div>
               {onlineUsers.filter(u => u.isOnline).map(u => (
                 <button key={u.id} onClick={() => startPrivateChat(u.id, u.nickname)} style={{
@@ -1276,7 +1525,7 @@ const ChatPage = () => {
                   </div>
                   {u.awayMessage && (
                     <div style={{ paddingLeft: 15, fontSize: 10, color: 'var(--ch-text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      away · {u.awayMessage}
+                      {t('chat.awayHint', { msg: u.awayMessage })}
                     </div>
                   )}
                 </button>
@@ -1287,7 +1536,7 @@ const ChatPage = () => {
           {onlineUsers.some(u => !u.isOnline) && (
             <div style={{ padding: '6px 0 2px' }}>
               <div style={{ padding: '0 12px 3px', fontSize: 9, fontWeight: 600, color: 'var(--ch-text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Away ({onlineUsers.filter(u => !u.isOnline).length})
+                {t('chat.away', { n: onlineUsers.filter(u => !u.isOnline).length })}
               </div>
               {onlineUsers.filter(u => !u.isOnline).map(u => (
                 <button key={u.id} onClick={() => startPrivateChat(u.id, u.nickname)} style={{
@@ -1315,7 +1564,7 @@ const ChatPage = () => {
 
           {onlineUsers.length === 0 && (
             <p style={{ fontSize: 11, color: 'var(--ch-text-2)', textAlign: 'center', marginTop: 20, padding: '0 12px' }}>
-              {presenceReady ? 'No one online' : 'Connecting...'}
+              {presenceReady ? t('chat.noOneOnline') : t('chat.connecting')}
             </p>
           )}
 
@@ -1323,7 +1572,7 @@ const ChatPage = () => {
           <div style={{ marginTop: 'auto', borderTop: '1px solid var(--ch-border)', padding: '8px 12px' }}>
             <button
               onClick={openNicknameModal}
-              title={nicknameChangesLeft > 0 ? `Change nickname (${nicknameChangesLeft} left)` : 'Limit reached'}
+              title={nicknameChangesLeft > 0 ? t('chat.changesLeft', { n: nicknameChangesLeft, s: nicknameChangesLeft !== 1 ? 's' : '' }) : t('chat.changesOf3', { n: 0, s: 's' })}
               style={{ width: '100%', background: 'none', border: 'none', cursor: nicknameChangesLeft > 0 ? 'pointer' : 'default', padding: 0, textAlign: 'left' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -1337,11 +1586,11 @@ const ChatPage = () => {
               </div>
               {isAway ? (
                 <div style={{ fontSize: 9, color: 'var(--ch-text-3)', marginTop: 2, paddingLeft: 14 }}>
-                  away · {awayMessage} · type /back to return
+                  {t('chat.awayHint', { msg: awayMessage })} · {t('cmd.back.returned')}
                 </div>
               ) : nicknameChangesLeft > 0 && (
                 <div style={{ fontSize: 9, color: 'var(--ch-text-3)', marginTop: 2, paddingLeft: 14 }}>
-                  {nicknameChangesLeft} change{nicknameChangesLeft !== 1 ? 's' : ''} left
+                  {t('chat.changesLeft', { n: nicknameChangesLeft, s: nicknameChangesLeft !== 1 ? 's' : '' })}
                 </div>
               )}
             </button>
@@ -1374,7 +1623,7 @@ const ChatPage = () => {
             onMouseEnter={e => e.currentTarget.style.background = 'var(--ch-hover)'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
-            Delete for me
+            {t('chat.deleteForMe')}
           </button>
           {canDeleteForEveryone && (
             <button
@@ -1387,7 +1636,7 @@ const ChatPage = () => {
               onMouseEnter={e => e.currentTarget.style.background = 'var(--ch-hover)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
-              Delete for everyone
+              {t('chat.deleteForAll')}
             </button>
           )}
         </div>
@@ -1403,14 +1652,14 @@ const ChatPage = () => {
             border: '1px solid var(--ch-border-2)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--ch-text)' }}>Create Room</span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--ch-text)' }}>{t('chat.createRoom')}</span>
               <button onClick={() => setShowCreateRoom(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ch-text-2)', fontSize: 18, lineHeight: 1, padding: 2 }}>✕</button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--ch-text-2)', marginBottom: 5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                  Room Name
+                  {t('chat.roomName')}
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
                   <span style={{
@@ -1432,14 +1681,14 @@ const ChatPage = () => {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--ch-text-2)', marginBottom: 5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                  Description
+                  {t('chat.description')}
                 </label>
                 <input type="text" value={newRoomDescription} onChange={e => setNewRoomDescription(e.target.value)}
                   placeholder="Optional" className="ch-input" style={modalInput} />
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--ch-text)' }}>
                 <input type="checkbox" checked={newRoomIsPrivate} onChange={e => setNewRoomIsPrivate(e.target.checked)} />
-                Private room
+                {t('chat.privateRoom')}
               </label>
               {newRoomIsPrivate && (
                 <div>
@@ -1461,7 +1710,7 @@ const ChatPage = () => {
                 border: '1px solid var(--ch-border-2)', borderRadius: 6,
                 cursor: 'pointer', color: 'var(--ch-text-2)', fontFamily: 'inherit',
               }}>
-                Cancel
+                {t('common.cancel')}
               </button>
               <button onClick={createRoom} disabled={!newRoomName.trim()} style={{
                 padding: '7px 16px', fontSize: 12, fontWeight: 600,
@@ -1471,11 +1720,22 @@ const ChatPage = () => {
                 color: newRoomName.trim() ? 'var(--ch-btn-text)' : 'var(--ch-text-3)',
                 fontFamily: 'inherit',
               }}>
-                Create Room
+                {t('chat.createRoom')}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── REWARD MODAL (ad unlock) ── */}
+      {showRewardModal && (
+        <RewardModal
+          type={showRewardModal}
+          isDark={isDark}
+          onWatchAd={handleWatchAd}
+          onClose={() => setShowRewardModal(null)}
+          isWatchingAd={isWatchingAd}
+        />
       )}
 
       {/* ── USER SETTINGS MODAL ── */}
@@ -1489,14 +1749,14 @@ const ChatPage = () => {
           }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--ch-text)' }}>User Settings</span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--ch-text)' }}>{t('chat.userSettings')}</span>
               <button onClick={() => setShowNicknameModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ch-text-2)', fontSize: 18, lineHeight: 1, padding: 2 }}>✕</button>
             </div>
 
             {/* Nickname row */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--ch-text-2)', marginBottom: 6, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                Nickname
+                {t('chat.nickname')}
               </label>
               <div style={{ display: 'flex', gap: 6 }}>
                 <input
@@ -1510,25 +1770,32 @@ const ChatPage = () => {
                   style={{ ...modalInput, flex: 1 }}
                 />
                 <button
-                  onClick={saveNickname}
-                  disabled={nicknameSaving || !newNickname.trim() || nicknameChangesLeft === 0}
+                  onClick={() => {
+                    if (monetization.nickChangesLeftToday === 0) {
+                      setShowNicknameModal(false);
+                      setShowRewardModal('nickname');
+                    } else {
+                      saveNickname();
+                    }
+                  }}
+                  disabled={nicknameSaving || !newNickname.trim()}
                   style={{
                     padding: '0 14px', fontSize: 12, fontWeight: 600,
                     borderRadius: 6, border: 'none', flexShrink: 0,
-                    cursor: nicknameSaving || !newNickname.trim() || nicknameChangesLeft === 0 ? 'not-allowed' : 'pointer',
-                    background: nicknameSaving || !newNickname.trim() || nicknameChangesLeft === 0 ? 'var(--ch-border)' : 'var(--ch-btn-active)',
-                    color: nicknameSaving || !newNickname.trim() || nicknameChangesLeft === 0 ? 'var(--ch-text-3)' : 'var(--ch-btn-text)',
+                    cursor: nicknameSaving || !newNickname.trim() ? 'not-allowed' : 'pointer',
+                    background: nicknameSaving || !newNickname.trim() ? 'var(--ch-border)' : 'var(--ch-btn-active)',
+                    color: nicknameSaving || !newNickname.trim() ? 'var(--ch-text-3)' : 'var(--ch-btn-text)',
                     fontFamily: 'inherit', whiteSpace: 'nowrap',
                   }}
                 >
-                  {nicknameSaving ? '...' : 'Save'}
+                  {nicknameSaving ? '...' : t('common.save')}
                 </button>
               </div>
               {nicknameError && (
                 <p style={{ fontSize: 11, color: 'var(--ch-error)', marginTop: 5 }}>{nicknameError}</p>
               )}
-              <p style={{ fontSize: 10, color: nicknameChangesLeft <= 1 ? 'var(--ch-error)' : 'var(--ch-text-3)', marginTop: 5 }}>
-                <strong>{nicknameChangesLeft}</strong> change{nicknameChangesLeft !== 1 ? 's' : ''} remaining of 3 allowed per account.
+              <p style={{ fontSize: 10, color: monetization.nickChangesLeftToday === 0 ? 'var(--ch-error)' : 'var(--ch-text-3)', marginTop: 5 }}>
+                {t('chat.changesOf3', { n: monetization.nickChangesLeftToday, s: monetization.nickChangesLeftToday !== 1 ? 's' : '' })}
               </p>
             </div>
 
@@ -1536,7 +1803,7 @@ const ChatPage = () => {
             <div style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--ch-border)', background: 'var(--ch-bg-3)', marginBottom: 20 }}>
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: detectingFlag ? 'wait' : 'pointer', gap: 8 }}>
                 <span style={{ fontSize: 12, color: 'var(--ch-text)', fontWeight: 500 }}>
-                  Show my country flag
+                  {t('chat.showFlag')}
                 </span>
                 <input
                   type="checkbox"
@@ -1549,7 +1816,7 @@ const ChatPage = () => {
 
               {detectingFlag && (
                 <p style={{ fontSize: 11, color: 'var(--ch-text-2)', margin: '6px 0 0' }}>
-                  Detecting location...
+                  {t('chat.detectingLoc')}
                 </p>
               )}
               {!detectingFlag && showFlag && countryCode && (
@@ -1567,7 +1834,7 @@ const ChatPage = () => {
             <div style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--ch-border)', background: 'var(--ch-bg-3)', marginBottom: 20 }}>
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', gap: 8 }}>
                 <span style={{ fontSize: 12, color: 'var(--ch-text)', fontWeight: 500 }}>
-                  Sound notifications
+                  {t('chat.soundNotifs')}
                 </span>
                 <input
                   type="checkbox"
@@ -1581,17 +1848,46 @@ const ChatPage = () => {
                 />
               </label>
               <p style={{ fontSize: 10, color: 'var(--ch-text-3)', margin: '5px 0 0' }}>
-                Plays a sound when you receive a DM
+                {t('chat.soundDesc')}
               </p>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            {/* Language selector */}
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--ch-border)' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ch-text)', marginBottom: 8 }}>
+                {t('common.language')}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {LANG_OPTIONS.map(opt => {
+                  const isActive = opt.value === 'auto' ? autoDetect : (!autoDetect && language === opt.value);
+                  return (
+                    <button key={opt.value}
+                      onClick={() => handleSetLanguage(opt.value as SupportedLanguage | 'auto')}
+                      style={{
+                        padding: '4px 12px', borderRadius: 999, fontSize: 12, cursor: 'pointer',
+                        fontWeight: isActive ? 600 : 400,
+                        background: isActive ? 'var(--ch-accent)' : 'transparent',
+                        color: isActive ? 'var(--ch-bg)' : 'var(--ch-text-2)',
+                        border: `1px solid ${isActive ? 'var(--ch-accent)' : 'var(--ch-border)'}`,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--ch-text-3)', marginTop: 6 }}>
+                {t('chat.detectedLocale', { locale, timezone })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
               <button onClick={() => setShowNicknameModal(false)} style={{
                 padding: '7px 16px', fontSize: 12, borderRadius: 6,
                 border: '1px solid var(--ch-border-2)', background: 'var(--ch-bg-3)',
                 color: 'var(--ch-text-2)', cursor: 'pointer', fontFamily: 'inherit',
               }}>
-                Close
+                {t('common.close')}
               </button>
             </div>
           </div>

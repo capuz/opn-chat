@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { authService } from '../services/auth.service';
 import { adminService } from '../services/admin.service';
+import { useTranslation } from '../i18n/I18nContext';
 import type {
   AdminStatsDto, AdminLiveDataDto, PagedResult, AdminUserDto, AdminRoomDto,
   AdminMessageDto, AdminReportDto, AdminAuditLogDto, AnalyticsDto, SystemSettingDto,
@@ -73,23 +74,26 @@ const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange
   />
 );
 
-const ConfirmModal = ({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) => (
-  <div style={{
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  }}>
+const ConfirmModal = ({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) => {
+  const { t } = useTranslation();
+  return (
     <div style={{
-      background: 'var(--ch-modal-bg)', border: '1px solid var(--ch-border)',
-      borderRadius: 10, padding: 24, maxWidth: 400, width: '90%',
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      <div style={{ color: 'var(--ch-text)', marginBottom: 20, fontSize: 14 }}>{message}</div>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button onClick={onCancel} style={btnStyle(false)}>Cancel</button>
-        <button onClick={onConfirm} style={{ ...btnStyle(false), background: '#ef4444', color: '#fff', borderColor: '#ef4444' }}>Confirm</button>
+      <div style={{
+        background: 'var(--ch-modal-bg)', border: '1px solid var(--ch-border)',
+        borderRadius: 10, padding: 24, maxWidth: 400, width: '90%',
+      }}>
+        <div style={{ color: 'var(--ch-text)', marginBottom: 20, fontSize: 14 }}>{message}</div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} style={btnStyle(false)}>{t('common.cancel')}</button>
+          <button onClick={onConfirm} style={{ ...btnStyle(false), background: '#ef4444', color: '#fff', borderColor: '#ef4444' }}>Confirm</button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const MiniBarChart = ({ data, labels, color }: { data: number[]; labels: string[]; color: string }) => {
   const max = Math.max(...data, 1);
@@ -184,12 +188,13 @@ const ActionMenu = ({ items }: { items: { label: string; danger?: boolean; onCli
 // ─── BanModal ─────────────────────────────────────────────────────────────────
 
 const BanModal = ({ onBan, onClose }: { onBan: (reason: string, expiresAt?: string) => void; onClose: () => void }) => {
+  const { t } = useTranslation();
   const [reason, setReason] = useState('');
   const [expires, setExpires] = useState('');
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: 'var(--ch-modal-bg)', border: '1px solid var(--ch-border)', borderRadius: 10, padding: 24, maxWidth: 380, width: '90%' }}>
-        <div style={{ color: 'var(--ch-text)', fontWeight: 600, marginBottom: 16 }}>Ban User</div>
+        <div style={{ color: 'var(--ch-text)', fontWeight: 600, marginBottom: 16 }}>{t('admin.ban')} User</div>
         <input
           value={reason} onChange={e => setReason(e.target.value)}
           placeholder="Reason..."
@@ -201,8 +206,8 @@ const BanModal = ({ onBan, onClose }: { onBan: (reason: string, expiresAt?: stri
           style={{ width: '100%', marginBottom: 16, background: 'var(--ch-input-bg)', border: '1px solid var(--ch-border)', borderRadius: 6, padding: '6px 10px', color: 'var(--ch-text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
         />
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={btnStyle(false)}>Cancel</button>
-          <button onClick={() => reason && onBan(reason, expires || undefined)} style={{ ...btnStyle(!reason), background: reason ? '#ef4444' : undefined, color: reason ? '#fff' : undefined, borderColor: reason ? '#ef4444' : undefined }}>Ban</button>
+          <button onClick={onClose} style={btnStyle(false)}>{t('common.cancel')}</button>
+          <button onClick={() => reason && onBan(reason, expires || undefined)} style={{ ...btnStyle(!reason), background: reason ? '#ef4444' : undefined, color: reason ? '#fff' : undefined, borderColor: reason ? '#ef4444' : undefined }}>{t('admin.ban')}</button>
         </div>
       </div>
     </div>
@@ -212,6 +217,7 @@ const BanModal = ({ onBan, onClose }: { onBan: (reason: string, expiresAt?: stri
 // ─── OverviewPanel ────────────────────────────────────────────────────────────
 
 const OverviewPanel = () => {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<AdminStatsDto | null>(null);
 
   useEffect(() => {
@@ -222,16 +228,16 @@ const OverviewPanel = () => {
 
   return (
     <div style={panelStyle()}>
-      <h2 style={h2Style()}>Overview</h2>
+      <h2 style={h2Style()}>{t('admin.overview')}</h2>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-        <StatCard label="Total Users" value={stats.totalUsers} />
-        <StatCard label="Online Now" value={stats.onlineNow} color="var(--ch-online-dot)" />
-        <StatCard label="Active Rooms" value={stats.activeRooms} color="#a78bfa" />
-        <StatCard label="Messages Today" value={stats.messagesToday} color="#60a5fa" />
-        <StatCard label="Banned Users" value={stats.bannedUsers} color="#ef4444" />
-        <StatCard label="Pending Reports" value={stats.pendingReports} color="#f59e0b" />
-        <StatCard label="Server Uptime" value={stats.serverUptime} color="var(--ch-text-2)" />
-        <StatCard label="Connections" value={stats.signalRConnections} color="var(--ch-accent)" />
+        <StatCard label={t('admin.totalUsers')} value={stats.totalUsers} />
+        <StatCard label={t('admin.onlineNow')} value={stats.onlineNow} color="var(--ch-online-dot)" />
+        <StatCard label={t('admin.activeRooms')} value={stats.activeRooms} color="#a78bfa" />
+        <StatCard label={t('admin.messagesToday')} value={stats.messagesToday} color="#60a5fa" />
+        <StatCard label={t('admin.bannedUsers')} value={stats.bannedUsers} color="#ef4444" />
+        <StatCard label={t('admin.pendingReports')} value={stats.pendingReports} color="#f59e0b" />
+        <StatCard label={t('admin.serverUptime')} value={stats.serverUptime} color="var(--ch-text-2)" />
+        <StatCard label={t('admin.connections')} value={stats.signalRConnections} color="var(--ch-accent)" />
       </div>
     </div>
   );
@@ -327,9 +333,11 @@ const UsersPanel = () => {
     if (msg) { setConfirm({ msg, fn: go }); } else { go(); }
   };
 
+  const { t } = useTranslation();
+
   return (
     <div style={panelStyle()}>
-      <h2 style={h2Style()}>User Management</h2>
+      <h2 style={h2Style()}>{t('admin.users')}</h2>
       <div style={{ marginBottom: 10 }}>
         <SearchInput value={search} onChange={setSearch} placeholder="Search by nickname or email..." />
       </div>
@@ -366,15 +374,15 @@ const UsersPanel = () => {
                 </td>
                 <td style={tdStyle()}>
                   <ActionMenu items={[
-                    { label: u.isBanned ? 'Unban' : 'Ban', onClick: () => u.isBanned ? act(() => adminService.unbanUser(u.id)) : setBanTarget(u.id) },
-                    { label: 'Kick', onClick: () => act(() => adminService.kickUser(u.id), `Kick ${u.nickname}?`) },
-                    { label: u.isDeactivated ? 'Reactivate' : 'Deactivate', onClick: () => act(() => adminService.deactivateUser(u.id), `${u.isDeactivated ? 'Reactivate' : 'Deactivate'} ${u.nickname}?`), danger: !u.isDeactivated },
-                    { label: 'Mute (all rooms)', onClick: () => act(() => adminService.muteUser(u.id)) },
-                    { label: 'Unmute', onClick: () => act(() => adminService.unmuteUser(u.id)) },
-                    { label: 'Force Logout', onClick: () => act(() => adminService.forceLogout(u.id), `Force logout ${u.nickname}?`), danger: true },
-                    { label: u.isAdmin ? 'Revoke Admin' : 'Grant Admin', onClick: () => act(() => adminService.toggleAdmin(u.id, !u.isAdmin), `${u.isAdmin ? 'Revoke admin from' : 'Grant admin to'} ${u.nickname}?`), danger: u.isAdmin },
-                    { label: 'Reset Nickname Changes', onClick: () => act(() => adminService.resetNicknameChanges(u.id)) },
-                    { label: 'Delete All Messages', onClick: () => act(() => adminService.bulkDeleteUserMessages(u.id), `Delete all messages from ${u.nickname}?`), danger: true },
+                    { label: u.isBanned ? t('admin.unban') : t('admin.ban'), onClick: () => u.isBanned ? act(() => adminService.unbanUser(u.id)) : setBanTarget(u.id) },
+                    { label: t('admin.kick'), onClick: () => act(() => adminService.kickUser(u.id), `Kick ${u.nickname}?`) },
+                    { label: u.isDeactivated ? 'Reactivate' : t('admin.deactivate'), onClick: () => act(() => adminService.deactivateUser(u.id), `${u.isDeactivated ? 'Reactivate' : 'Deactivate'} ${u.nickname}?`), danger: !u.isDeactivated },
+                    { label: t('admin.mute') + ' (all rooms)', onClick: () => act(() => adminService.muteUser(u.id)) },
+                    { label: t('admin.unmute'), onClick: () => act(() => adminService.unmuteUser(u.id)) },
+                    { label: t('admin.forceLogout'), onClick: () => act(() => adminService.forceLogout(u.id), `Force logout ${u.nickname}?`), danger: true },
+                    { label: u.isAdmin ? 'Revoke Admin' : t('admin.toggleAdmin'), onClick: () => act(() => adminService.toggleAdmin(u.id, !u.isAdmin), `${u.isAdmin ? 'Revoke admin from' : 'Grant admin to'} ${u.nickname}?`), danger: u.isAdmin },
+                    { label: t('admin.resetNickname'), onClick: () => act(() => adminService.resetNicknameChanges(u.id)) },
+                    { label: t('admin.deleteAll'), onClick: () => act(() => adminService.bulkDeleteUserMessages(u.id), `Delete all messages from ${u.nickname}?`), danger: true },
                   ]} />
                 </td>
               </tr>
@@ -403,9 +411,11 @@ const RoomsPanel = () => {
     if (msg) setConfirm({ msg, fn: go }); else go();
   };
 
+  const { t } = useTranslation();
+
   return (
     <div style={panelStyle()}>
-      <h2 style={h2Style()}>Room Management</h2>
+      <h2 style={h2Style()}>{t('admin.rooms')}</h2>
       <div style={{ overflowX: 'auto' }}>
         <table style={tableStyle()}>
           <thead>
@@ -423,9 +433,9 @@ const RoomsPanel = () => {
                 <td style={tdStyle()}>{r.isLocked && <Badge label="locked" color="#ef4444" />}</td>
                 <td style={tdStyle()}>
                   <ActionMenu items={[
-                    { label: r.isLocked ? 'Unlock' : 'Lock', onClick: () => act(r.isLocked ? () => adminService.unlockRoom(r.id) : () => adminService.lockRoom(r.id)) },
-                    { label: 'Clear All Messages', onClick: () => act(() => adminService.clearRoomMessages(r.id), `Clear all messages in #${r.name}?`), danger: true },
-                    { label: 'Delete Room', onClick: () => act(() => adminService.deleteRoom(r.id), `Delete room #${r.name}? This cannot be undone.`), danger: true },
+                    { label: r.isLocked ? t('admin.unlock') : t('admin.lock'), onClick: () => act(r.isLocked ? () => adminService.unlockRoom(r.id) : () => adminService.lockRoom(r.id)) },
+                    { label: t('admin.clearMessages'), onClick: () => act(() => adminService.clearRoomMessages(r.id), `Clear all messages in #${r.name}?`), danger: true },
+                    { label: t('admin.deleteRoom'), onClick: () => act(() => adminService.deleteRoom(r.id), `Delete room #${r.name}? This cannot be undone.`), danger: true },
                   ]} />
                 </td>
               </tr>
@@ -461,9 +471,11 @@ const MessagesPanel = () => {
     if (msg) setConfirm({ msg, fn: go }); else go();
   };
 
+  const { t } = useTranslation();
+
   return (
     <div style={panelStyle()}>
-      <h2 style={h2Style()}>Message Moderation</h2>
+      <h2 style={h2Style()}>{t('admin.messages')}</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ flex: 2, minWidth: 160 }}><SearchInput value={query} onChange={setQuery} placeholder="Search content..." /></div>
         <div style={{ flex: 1, minWidth: 120 }}><SearchInput value={userId} onChange={setUserId} placeholder="User ID..." /></div>
@@ -489,8 +501,8 @@ const MessagesPanel = () => {
                 <td style={tdStyle()}>
                   {!m.isDeleted && (
                     <ActionMenu items={[
-                      { label: 'Delete Message', onClick: () => act(() => adminService.deleteMessage(m.id), 'Delete this message?'), danger: true },
-                      { label: "Delete User's All Messages", onClick: () => act(() => adminService.bulkDeleteUserMessages(m.userId), `Delete all messages from ${m.userNickname}?`), danger: true },
+                      { label: t('admin.deleteMessage'), onClick: () => act(() => adminService.deleteMessage(m.id), 'Delete this message?'), danger: true },
+                      { label: t('admin.deleteAll'), onClick: () => act(() => adminService.bulkDeleteUserMessages(m.userId), `Delete all messages from ${m.userNickname}?`), danger: true },
                     ]} />
                   )}
                 </td>
@@ -520,9 +532,11 @@ const ReportsPanel = () => {
 
   const resolve = (id: string) => adminService.resolveReport(id).then(() => load(page)).catch(() => {});
 
+  const { t } = useTranslation();
+
   return (
     <div style={panelStyle()}>
-      <h2 style={h2Style()}>Reports</h2>
+      <h2 style={h2Style()}>{t('admin.reports')}</h2>
       <div style={{ marginBottom: 10 }}>
         <Toggle value={unresolvedOnly} onChange={setUnresolvedOnly} label="Unresolved only" />
       </div>
@@ -543,7 +557,7 @@ const ReportsPanel = () => {
                 <td style={{ ...tdStyle(), color: 'var(--ch-text-3)', fontFamily: 'DM Mono,monospace' }}>{fmtDate(r.createdAt)}</td>
                 <td style={tdStyle()}><Badge label={r.isResolved ? 'resolved' : 'open'} color={r.isResolved ? '#22c55e' : '#f59e0b'} /></td>
                 <td style={tdStyle()}>
-                  {!r.isResolved && <button onClick={() => resolve(r.id)} style={{ ...btnStyle(false), fontSize: 11 }}>Resolve</button>}
+                  {!r.isResolved && <button onClick={() => resolve(r.id)} style={{ ...btnStyle(false), fontSize: 11 }}>{t('admin.resolve')}</button>}
                 </td>
               </tr>
             ))}
@@ -568,9 +582,11 @@ const AuditPanel = () => {
 
   useEffect(() => { setPage(1); load(1); }, [load]);
 
+  const { t } = useTranslation();
+
   return (
     <div style={panelStyle()}>
-      <h2 style={h2Style()}>Audit Log</h2>
+      <h2 style={h2Style()}>{t('admin.audit')}</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 140 }}>
           <SearchInput value={params.action ?? ''} onChange={v => setParams(p => ({ ...p, action: v || undefined }))} placeholder="Action type..." />
@@ -648,6 +664,7 @@ const AnalyticsPanel = () => {
 // ─── SettingsPanel ────────────────────────────────────────────────────────────
 
 const SettingsPanel = () => {
+  const { t, language, locale, timezone, autoDetect, setLanguage } = useTranslation();
   const [settings, setSettings] = useState<SystemSettingDto[]>([]);
   const [saved, setSaved] = useState(false);
 
@@ -662,7 +679,7 @@ const SettingsPanel = () => {
 
   return (
     <div style={panelStyle()}>
-      <h2 style={h2Style()}>System Settings</h2>
+      <h2 style={h2Style()}>{t('admin.settings')}</h2>
       <div style={{ maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={settingRow()}>
           <label style={settingLabel()}>Max Nickname Changes</label>
@@ -689,8 +706,45 @@ const SettingsPanel = () => {
           <Toggle value={maintenance} onChange={v => update('MaintenanceMode', v ? 'true' : 'false')} label={maintenance ? '⚠ ALL USERS AFFECTED' : ''} />
         </div>
         <button onClick={save} style={{ ...btnStyle(false), background: 'var(--ch-accent)', color: 'var(--ch-btn-text)', borderColor: 'var(--ch-accent)', padding: '8px 20px', alignSelf: 'flex-start', fontWeight: 600 }}>
-          {saved ? '✓ Saved' : 'Save Settings'}
+          {saved ? '✓ Saved' : t('common.save') + ' Settings'}
         </button>
+
+        {/* Language Settings */}
+        <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--ch-border)' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ch-text)', marginBottom: 4 }}>
+            {t('admin.languageSettings')}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--ch-text-3)', marginBottom: 12 }}>
+            {t('admin.interfaceLanguage')}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[
+              { value: 'auto' as const,  label: '🌐 Auto' },
+              { value: 'es' as const,    label: 'ES — Español' },
+              { value: 'en' as const,    label: 'EN — English' },
+              { value: 'pt-BR' as const, label: 'PT — Português' },
+            ].map(opt => {
+              const isActive = opt.value === 'auto' ? autoDetect : (!autoDetect && language === opt.value);
+              return (
+                <button key={opt.value}
+                  onClick={() => setLanguage(opt.value)}
+                  style={{
+                    padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+                    fontWeight: isActive ? 600 : 400,
+                    background: isActive ? 'var(--ch-accent)' : 'var(--ch-bg-2)',
+                    color: isActive ? 'var(--ch-bg)' : 'var(--ch-text-2)',
+                    border: `1px solid ${isActive ? 'var(--ch-accent)' : 'var(--ch-border)'}`,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--ch-text-3)', marginTop: 10 }}>
+            {t('chat.detectedLocale', { locale, timezone })}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -883,9 +937,11 @@ const ConsolePanel = () => {
     }
   };
 
+  const { t } = useTranslation();
+
   return (
     <div style={{ ...panelStyle(), background: 'var(--ch-bg)', fontFamily: 'DM Mono, monospace' }}>
-      <h2 style={{ ...h2Style(), fontFamily: 'DM Mono, monospace', color: 'var(--ch-accent)' }}>Admin Console</h2>
+      <h2 style={{ ...h2Style(), fontFamily: 'DM Mono, monospace', color: 'var(--ch-accent)' }}>{t('admin.console')}</h2>
       <div style={{ flex: 1, overflowY: 'auto', marginBottom: 12 }}>
         {history.map((line, i) => (
           <div key={i} style={{
@@ -975,6 +1031,7 @@ function PermIcon({ allowed }: { allowed: boolean }) {
 }
 
 function PermissionsPanel() {
+  const { t } = useTranslation();
   const [permissions, setPermissions] = useState<CommandPermissionDto[]>([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<'All' | PermissionCategory>('All');
@@ -1170,7 +1227,7 @@ function PermissionsPanel() {
             </div>
 
             <div style={{ textAlign: 'right' }}>
-              <button onClick={() => setSelected(null)} style={btnStyle(false)}>Close</button>
+              <button onClick={() => setSelected(null)} style={btnStyle(false)}>{t('common.close')}</button>
             </div>
           </div>
         </div>
@@ -1182,17 +1239,17 @@ function PermissionsPanel() {
 // ─── Tab config ───────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'live', label: 'Live' },
-  { id: 'users', label: 'Users' },
-  { id: 'rooms', label: 'Rooms' },
-  { id: 'messages', label: 'Messages' },
-  { id: 'reports', label: 'Reports' },
-  { id: 'audit', label: 'Audit' },
-  { id: 'analytics', label: 'Analytics' },
-  { id: 'settings', label: 'Settings' },
-  { id: 'console', label: 'Console' },
-  { id: 'permissions', label: 'Permissions' },
+  { id: 'overview',    key: 'admin.overview'    },
+  { id: 'live',        key: 'admin.live'        },
+  { id: 'users',       key: 'admin.users'       },
+  { id: 'rooms',       key: 'admin.rooms'       },
+  { id: 'messages',    key: 'admin.messages'    },
+  { id: 'reports',     key: 'admin.reports'     },
+  { id: 'audit',       key: 'admin.audit'       },
+  { id: 'analytics',   key: 'admin.analytics'   },
+  { id: 'settings',    key: 'admin.settings'    },
+  { id: 'console',     key: 'admin.console'     },
+  { id: 'permissions', key: 'admin.permissions' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -1202,6 +1259,7 @@ type TabId = (typeof TABS)[number]['id'];
 export default function AdminDashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [tab, setTab] = useState<TabId>('overview');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -1259,26 +1317,26 @@ export default function AdminDashboardPage() {
             animation: 'pulse-dot 2s ease-in-out infinite', flexShrink: 0,
           }} />
           <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: '-0.02em', color: 'var(--ch-text)' }}>
-            opn<span style={{ color: 'var(--ch-accent)' }}>·</span>admin
+            opn<span style={{ color: 'var(--ch-accent)' }}>·</span>{t('admin.dashboard')}
           </span>
         </div>
 
         {/* Tab nav */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto', scrollbarWidth: 'none' }}>
-          {TABS.map(t => (
+          {TABS.map(tabItem => (
             <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
+              key={tabItem.id}
+              onClick={() => setTab(tabItem.id)}
               style={{
-                background: tab === t.id ? 'var(--ch-bg-2)' : 'transparent',
-                border: tab === t.id ? '1px solid var(--ch-border)' : '1px solid transparent',
+                background: tab === tabItem.id ? 'var(--ch-bg-2)' : 'transparent',
+                border: tab === tabItem.id ? '1px solid var(--ch-border)' : '1px solid transparent',
                 borderRadius: 5, padding: '3px 10px',
-                color: tab === t.id ? 'var(--ch-accent)' : 'var(--ch-text-2)',
-                fontSize: 12, cursor: 'pointer', fontWeight: tab === t.id ? 600 : 400,
+                color: tab === tabItem.id ? 'var(--ch-accent)' : 'var(--ch-text-2)',
+                fontSize: 12, cursor: 'pointer', fontWeight: tab === tabItem.id ? 600 : 400,
                 whiteSpace: 'nowrap', flexShrink: 0,
               }}
             >
-              {t.label}
+              {t(tabItem.key)}
             </button>
           ))}
         </div>
@@ -1287,7 +1345,7 @@ export default function AdminDashboardPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, fontSize: 12 }}>
           <span style={{ color: 'var(--ch-text-3)' }}>{user?.nickname}</span>
           <button onClick={toggleTheme} style={{ ...btnStyle(false), padding: '3px 7px', fontSize: 13 }}>{theme === 'dark' ? '☀' : '☾'}</button>
-          <button onClick={() => navigate('/chat')} style={{ ...btnStyle(false), padding: '3px 8px' }}>← Chat</button>
+          <button onClick={() => navigate('/chat')} style={{ ...btnStyle(false), padding: '3px 8px' }}>← {t('admin.backToChat')}</button>
           <button onClick={handleSignOut} style={{ ...btnStyle(false), padding: '3px 8px', color: '#ef4444' }}>Sign out</button>
         </div>
       </div>

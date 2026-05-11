@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { I18nProvider } from './i18n/I18nContext';
 import type { JSX } from 'react';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
@@ -24,6 +25,7 @@ const AdminRoute = ({ children }: { children: JSX.Element }) => {
 
 function App() {
   return (
+    <I18nProvider>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -36,6 +38,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </I18nProvider>
   );
 }
 

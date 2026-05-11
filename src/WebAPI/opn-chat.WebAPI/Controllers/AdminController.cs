@@ -203,6 +203,13 @@ namespace opn_chat.WebAPI.Controllers
         public async Task<IActionResult> UpdateSettings([FromBody] List<SystemSettingDto> settings)
         {
             await _admin.UpdateSettingsAsync(settings);
+
+            var banner = settings.FirstOrDefault(s => s.Key == "GlobalAnnouncementBanner");
+            if (banner != null)
+            {
+                await _hubContext.Clients.All.SendAsync("AnnouncementBannerUpdated", new { message = banner.Value ?? "" });
+            }
+
             return Ok();
         }
 
