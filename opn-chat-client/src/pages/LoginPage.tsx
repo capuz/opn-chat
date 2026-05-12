@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { authService } from '../services/auth.service';
 import { apiService } from '../services/api.service';
+import { useTranslation } from '../i18n/I18nContext';
+import type { SupportedLanguage } from '../i18n/I18nContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5091';
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
@@ -48,11 +50,9 @@ const EyeOffIcon = () => (
 
 const PanelArt = () => (
   <svg width="480" height="480" viewBox="0 0 480 480" fill="none" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -52%)', pointerEvents: 'none' }}>
-    {/* Concentric rings */}
     {[220, 175, 130, 88, 48].map((r, i) => (
       <circle key={r} cx="240" cy="240" r={r} stroke="#6366f1" strokeWidth="0.6" strokeOpacity={0.18 + i * 0.04} />
     ))}
-    {/* Scattered dots */}
     {[
       [52, 108], [428, 148], [72, 352], [412, 332],
       [240, 42], [240, 438], [145, 78], [335, 78],
@@ -60,17 +60,26 @@ const PanelArt = () => (
     ].map(([cx, cy], i) => (
       <circle key={i} cx={cx} cy={cy} r="2.5" fill="#6366f1" fillOpacity="0.35" />
     ))}
-    {/* Cross lines */}
     <line x1="240" y1="20" x2="240" y2="460" stroke="#6366f1" strokeWidth="0.4" strokeOpacity="0.1" />
     <line x1="20" y1="240" x2="460" y2="240" stroke="#6366f1" strokeWidth="0.4" strokeOpacity="0.1" />
   </svg>
 );
+
+// ─── Language selector ────────────────────────────────────────────────────────
+
+const LANG_OPTIONS: { value: SupportedLanguage | 'auto'; label: string }[] = [
+  { value: 'auto',  label: '🌐 Auto' },
+  { value: 'es',    label: 'ES' },
+  { value: 'en',    label: 'EN' },
+  { value: 'pt-BR', label: 'PT' },
+];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const { refreshAuth } = useAuth();
+  const { t, language, autoDetect, setLanguage } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [email, setEmail] = useState('');
@@ -104,7 +113,7 @@ const LoginPage = () => {
   }, []);
 
   const handleGoogleCallback = async (response: any) => {
-    if (!response.credential) { setError('No se recibió el token de Google.'); return; }
+    if (!response.credential) { setError(t('login.googleError')); return; }
     try {
       setIsLoading(true);
       setError('');
@@ -117,14 +126,14 @@ const LoginPage = () => {
       refreshAuth();
       navigate('/chat');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Error al iniciar sesión con Google.');
+      setError(err.response?.data?.message || t('login.googleError'));
       setIsLoading(false);
     }
   };
 
   const handleEmailSignIn = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('Email sign-in is coming soon. Please use Google to continue.');
+    setError(t('login.emailComingSoon'));
   };
 
   const handleDevLogin = () => {
@@ -147,7 +156,6 @@ const LoginPage = () => {
           padding: '44px 52px', background: '#09090b', position: 'relative', overflow: 'hidden',
         }}
       >
-        {/* Glow orb */}
         <div style={{
           position: 'absolute', top: '42%', left: '50%',
           transform: 'translate(-50%, -50%)',
@@ -158,22 +166,20 @@ const LoginPage = () => {
 
         <PanelArt />
 
-        {/* Brand */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative', zIndex: 1 }}>
           <BrandMark size={34} />
           <span style={{ color: '#fafafa', fontSize: 17, fontWeight: 600, letterSpacing: '-0.02em' }}>opnchat</span>
         </div>
 
-        {/* Tagline */}
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ color: '#52525b', fontSize: 12, marginBottom: 14, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 500 }}>
-            Real-time messaging
+            {t('login.tagline1')}
           </p>
-          <h2 style={{ color: '#fafafa', fontSize: 30, fontWeight: 600, lineHeight: 1.25, letterSpacing: '-0.03em', margin: 0 }}>
-            Conversations that<br />actually matter.
+          <h2 style={{ color: '#fafafa', fontSize: 30, fontWeight: 600, lineHeight: 1.25, letterSpacing: '-0.03em', margin: 0, whiteSpace: 'pre-line' }}>
+            {t('login.tagline2')}
           </h2>
-          <p style={{ color: '#71717a', fontSize: 14, marginTop: 14, lineHeight: 1.65 }}>
-            Lightweight. Fast. Built for teams<br />who value clarity over clutter.
+          <p style={{ color: '#71717a', fontSize: 14, marginTop: 14, lineHeight: 1.65, whiteSpace: 'pre-line' }}>
+            {t('login.tagline3')}
           </p>
         </div>
       </div>
@@ -194,10 +200,10 @@ const LoginPage = () => {
           {/* Heading */}
           <div style={{ marginBottom: 28 }}>
             <h1 style={{ fontSize: 22, fontWeight: 600, color: '#111827', margin: '0 0 5px', letterSpacing: '-0.025em' }}>
-              Welcome back
+              {t('login.welcome')}
             </h1>
             <p style={{ fontSize: 14, color: '#9ca3af', margin: 0, lineHeight: 1.5 }}>
-              Sign in to your account to continue
+              {t('login.subtitle')}
             </p>
           </div>
 
@@ -205,7 +211,7 @@ const LoginPage = () => {
           <form onSubmit={handleEmailSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>Email</label>
+              <label style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>{t('common.email')}</label>
               <input
                 type="email"
                 value={email}
@@ -220,14 +226,14 @@ const LoginPage = () => {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>Password</label>
+                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>{t('common.password')}</label>
                 <a
                   href="#"
                   style={{ fontSize: 12, color: '#6366f1', textDecoration: 'none', fontWeight: 500 }}
                   onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
                   onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
                 >
-                  Forgot password?
+                  {t('login.forgotPassword')}
                 </a>
               </div>
               <div style={{ position: 'relative' }}>
@@ -258,7 +264,6 @@ const LoginPage = () => {
               </div>
             </div>
 
-            {/* Error */}
             {error && (
               <div style={{
                 padding: '10px 13px', borderRadius: 8,
@@ -269,7 +274,6 @@ const LoginPage = () => {
               </div>
             )}
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={isLoading}
@@ -285,7 +289,7 @@ const LoginPage = () => {
               onMouseEnter={e => { if (!isLoading) { e.currentTarget.style.background = '#4f46e5'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.35)'; } }}
               onMouseLeave={e => { if (!isLoading) { e.currentTarget.style.background = '#6366f1'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(99,102,241,0.25)'; } }}
             >
-              {isLoading ? 'Signing in…' : 'Sign in'}
+              {isLoading ? t('login.signingIn') : t('login.signIn')}
             </button>
           </form>
 
@@ -296,26 +300,24 @@ const LoginPage = () => {
             <div style={{ flex: 1, height: 1, background: '#f3f4f6' }} />
           </div>
 
-          {/* Google button (official renderer) */}
           <div id="google-signin-button" style={{ width: '100%', minHeight: 44 }} />
 
-          {/* Sign up */}
           <p style={{ textAlign: 'center', fontSize: 13, color: '#9ca3af', marginTop: 22 }}>
-            Don't have an account?{' '}
+            {t('login.noAccount')}{' '}
             <a
               href="#"
               style={{ color: '#6366f1', fontWeight: 500, textDecoration: 'none' }}
               onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
               onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
             >
-              Sign up
+              {t('login.signUp')}
             </a>
           </p>
 
           {/* Dev mode */}
           <div style={{ marginTop: 28, paddingTop: 18, borderTop: '1px solid #f9fafb' }}>
             <p style={{ textAlign: 'center', fontSize: 11, color: '#e5e7eb', marginBottom: 8, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-              Dev mode
+              {t('login.devMode')}
             </p>
             <button
               onClick={handleDevLogin}
@@ -329,8 +331,31 @@ const LoginPage = () => {
               onMouseEnter={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#6b7280'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.color = '#9ca3af'; }}
             >
-              Continue as Test User
+              {t('login.continueAsTest')}
             </button>
+          </div>
+
+          {/* Language selector */}
+          <div style={{ marginTop: 20, display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {LANG_OPTIONS.map(opt => {
+              const isActive = opt.value === 'auto' ? autoDetect : (!autoDetect && language === opt.value);
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => setLanguage(opt.value as SupportedLanguage | 'auto')}
+                  style={{
+                    padding: '3px 11px', borderRadius: 999, fontSize: 11, cursor: 'pointer',
+                    fontWeight: isActive ? 600 : 400,
+                    background: isActive ? '#6366f1' : 'transparent',
+                    color: isActive ? '#fff' : '#9ca3af',
+                    border: `1px solid ${isActive ? '#6366f1' : '#e5e7eb'}`,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
 
         </div>

@@ -81,6 +81,8 @@
   --ch-error:       #f87171;
   --ch-modal-bg:    #0e0e1c;
   --ch-glow:        rgba(94, 234, 212, 0.06);
+  --ch-boost-border: rgba(94, 234, 212, 0.35);
+  --ch-boost-bg:    rgba(94, 234, 212, 0.04);
 }
 
 /* ─── Chat Theme — Light (paper minimal) ───────────────────── */
@@ -106,6 +108,8 @@
   --ch-error:       #dc2626;
   --ch-modal-bg:    #ffffff;
   --ch-glow:        transparent;
+  --ch-boost-border: rgba(79, 70, 229, 0.4);
+  --ch-boost-bg:    rgba(79, 70, 229, 0.04);
 }
 
 /* ─── Cursor phosphor glow (dark only) ─────────────────────── */
@@ -150,6 +154,57 @@
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.3; }
+}
+
+/* ─── Monetization / Banner animations ─────────────────────── */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+@keyframes gradient-shift {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes glow-pulse-banner {
+  0%, 100% { opacity: 1; text-shadow: 0 0 4px var(--ch-accent), 0 0 10px var(--ch-accent); }
+  50%       { opacity: 0.75; text-shadow: 0 0 8px var(--ch-accent), 0 0 20px var(--ch-accent); }
+}
+
+@keyframes neon-shimmer {
+  0%   { filter: brightness(1); }
+  50%  { filter: brightness(1.4) drop-shadow(0 0 6px var(--ch-accent)); }
+  100% { filter: brightness(1); }
+}
+
+@keyframes ad-progress {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+
+@keyframes fadeSlideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ch-banner-ticker-inner {
+  display: inline-block;
+  white-space: nowrap;
+  animation: ticker-scroll 22s linear infinite;
+}
+
+.ch-banner-gradient-text {
+  background: linear-gradient(90deg, var(--ch-accent), #a78bfa, var(--ch-accent));
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 4s linear infinite;
+}
+
+.ch-boost-badge {
+  animation: glow-pulse-banner 2s ease-in-out infinite;
 }
 
 /* ─── Chat input focus ring ─────────────────────────────────── */

@@ -44,12 +44,8 @@ namespace opn_chat.Application.Services
             if (existing != null)
                 return new CreateRoomResultDto { Error = RoomCreationError.NameTaken };
 
-            var todayCount = await _roomRepository.CountCreatedTodayByUserAsync(userId);
-            if (todayCount >= 3)
-                return new CreateRoomResultDto { Error = RoomCreationError.DailyLimitReached };
-
             var activeCount = await _roomRepository.CountActiveByUserAsync(userId);
-            if (activeCount >= 10)
+            if (activeCount >= 1)
                 return new CreateRoomResultDto { Error = RoomCreationError.ActiveLimitReached };
 
             var room = new Room

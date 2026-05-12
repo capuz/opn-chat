@@ -17,17 +17,20 @@ namespace opn_chat.WebAPI.Controllers
         private readonly IUnitOfWork _unitOfWork;
         private readonly IPresenceTracker _presenceTracker;
         private readonly IHubContext<PresenceHub> _presenceHub;
+        private readonly IConfiguration _config;
 
         public ProfileController(
             IUserRepository userRepository,
             IUnitOfWork unitOfWork,
             IPresenceTracker presenceTracker,
-            IHubContext<PresenceHub> presenceHub)
+            IHubContext<PresenceHub> presenceHub,
+            IConfiguration config)
         {
             _userRepository = userRepository;
             _unitOfWork = unitOfWork;
             _presenceTracker = presenceTracker;
             _presenceHub = presenceHub;
+            _config = config;
         }
 
         [HttpPut("nickname")]
@@ -39,15 +42,21 @@ namespace opn_chat.WebAPI.Controllers
             var user = await _userRepository.GetByIdAsync(Guid.Parse(userId));
             if (user == null) return NotFound();
 
-            if (user.NicknameChangeCount >= 3)
-                return BadRequest(new { error = "Has alcanzado el límite de 3 cambios de nickname." });
+            var today = DateTime.UtcNow.Date;
+            var changesUsedToday = (user.NicknameChangesDate?.Date == today) ? user.NicknameChangesToday : 0;
+
+            var adActive = user.NickAdUnlockedUntil.HasValue && user.NickAdUnlockedUntil.Value > DateTime.UtcNow;
+            var dailyLimit = adActive ? 2 : 1;
+            if (changesUsedToday >= dailyLimit)
+                return BadRequest(new { error = "DAILY_LIMIT", changesLeft = 0 });
 
             var trimmed = dto.Nickname?.Trim();
             if (string.IsNullOrEmpty(trimmed) || trimmed.Length < 2 || trimmed.Length > 30)
                 return BadRequest(new { error = "El nickname debe tener entre 2 y 30 caracteres." });
 
             user.Nickname = trimmed;
-            user.NicknameChangeCount++;
+            user.NicknameChangesToday = changesUsedToday + 1;
+            user.NicknameChangesDate = DateTime.UtcNow;
             user.UpdatedAt = DateTime.UtcNow;
 
             await _userRepository.UpdateAsync(user);
@@ -56,8 +65,27 @@ namespace opn_chat.WebAPI.Controllers
             return Ok(new
             {
                 nickname = user.Nickname,
-                changesLeft = 3 - user.NicknameChangeCount
+                changesLeft = 0
             });
+        }
+
+        [HttpPost("nick-ad-unlock")]
+        public async Task<IActionResult> UnlockNickWithAd()
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            var user = await _userRepository.GetByIdAsync(Guid.Parse(userId));
+            if (user == null) return NotFound();
+
+            var hours = _config.GetValue<double>("NickAd:UnlockHours", 12);
+            user.NickAdUnlockedUntil = DateTime.UtcNow.AddHours(hours);
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.CommitAsync();
+
+            return Ok(new { unlockedUntil = user.NickAdUnlockedUntil.Value });
         }
 
         [HttpPut("flag")]
@@ -98,6 +126,14 @@ namespace opn_chat.WebAPI.Controllers
             return Ok(new { showFlag = user.ShowFlag, countryCode = user.CountryCode });
         }
 
+        [HttpGet("/api/settings/announcement")]
+        public async Task<IActionResult> GetAnnouncement(
+            [FromServices] ISystemSettingRepository settings)
+        {
+            var message = await settings.GetValueAsync("GlobalAnnouncementBanner");
+            return Ok(new { message = message ?? "" });
+        }
+
         [HttpGet("me")]
         public async Task<IActionResult> GetMe()
         {
@@ -112,12 +148,34 @@ namespace opn_chat.WebAPI.Controllers
                 id = user.Id,
                 nickname = user.Nickname,
                 email = user.Email,
-                nicknameChangesLeft = 3 - user.NicknameChangeCount,
+                nicknameChangesLeft = (user.NicknameChangesDate?.Date == DateTime.UtcNow.Date) ? Math.Max(0, 1 - user.NicknameChangesToday) : 1,
                 showFlag = user.ShowFlag,
                 countryCode = user.CountryCode,
                 globalBadge = user.GlobalBadge,
                 createdAt = user.CreatedAt
             });
+        }
+
+        [HttpPut("preferences")]
+        public async Task<IActionResult> UpdatePreferences([FromBody] opn_chat.Application.DTOs.UpdatePreferencesDto dto)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            var user = await _userRepository.GetByIdAsync(Guid.Parse(userId));
+            if (user == null) return NotFound();
+
+            var allowed = new[] { "auto", "en", "es", "pt-BR" };
+            if (!allowed.Contains(dto.PreferredLanguage)) return BadRequest(new { error = "Invalid language value." });
+
+            user.PreferredLanguage = dto.PreferredLanguage;
+            user.Timezone = dto.Timezone;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.CommitAsync();
+
+            return NoContent();
         }
 
         [HttpPut("admin/badge")]

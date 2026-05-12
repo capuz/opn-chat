@@ -67,6 +67,7 @@ builder.Services.AddScoped<IRoomService, RoomService>();
 builder.Services.AddScoped<IPrivateMessageService, PrivateMessageService>();
 builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddSingleton<IPresenceTracker, PresenceTracker>();
+builder.Services.AddSingleton<opn_chat.Application.Interfaces.IBoostService, opn_chat.WebAPI.Services.BoostService>();
 builder.Services.AddScoped<opn_chat.Application.Interfaces.IAdminService, opn_chat.Infrastructure.Services.AdminService>();
 builder.Services.AddScoped<opn_chat.Domain.Interfaces.ISystemSettingRepository, opn_chat.Infrastructure.Repositories.SystemSettingRepository>();
 builder.Services.AddScoped<opn_chat.Domain.Interfaces.ICommandPermissionRepository, opn_chat.Infrastructure.Repositories.CommandPermissionRepository>();
@@ -260,6 +261,20 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
+        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"PreferredLanguage\" TEXT NOT NULL DEFAULT 'auto'");
+        Console.WriteLine("[MIGRATION] PreferredLanguage column added.");
+    }
+    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] PreferredLanguage: {migEx.Message}"); }
+
+    try
+    {
+        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"Timezone\" TEXT");
+        Console.WriteLine("[MIGRATION] Timezone column added.");
+    }
+    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Timezone: {migEx.Message}"); }
+
+    try
+    {
         context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"IsDeactivated\" INTEGER NOT NULL DEFAULT 0");
         Console.WriteLine("[MIGRATION] Users.IsDeactivated column added.");
     }
@@ -329,6 +344,27 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine("[MIGRATION] SystemSettings table created.");
     }
     catch (Exception migEx) { Console.WriteLine($"[MIGRATION] SystemSettings: {migEx.Message}"); }
+
+    try
+    {
+        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"NicknameChangesToday\" INTEGER NOT NULL DEFAULT 0");
+        Console.WriteLine("[MIGRATION] Users.NicknameChangesToday column added.");
+    }
+    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Users.NicknameChangesToday: {migEx.Message}"); }
+
+    try
+    {
+        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"NicknameChangesDate\" TEXT");
+        Console.WriteLine("[MIGRATION] Users.NicknameChangesDate column added.");
+    }
+    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Users.NicknameChangesDate: {migEx.Message}"); }
+
+    try
+    {
+        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"NickAdUnlockedUntil\" TEXT");
+        Console.WriteLine("[MIGRATION] Users.NickAdUnlockedUntil column added.");
+    }
+    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Users.NickAdUnlockedUntil: {migEx.Message}"); }
 
     var defaultSettings = new[]
     {

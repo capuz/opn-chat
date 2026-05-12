@@ -42,6 +42,7 @@ namespace opn_chat.WebAPI.Controllers
                 IsSystem = r.IsSystem,
                 IsArchived = r.IsArchived,
                 CreatedByName = r.CreatedBy?.Nickname ?? "System",
+                CreatedById = r.CreatedById,
                 MemberCount = r.Members?.Count ?? 0
             });
             return Ok(result);

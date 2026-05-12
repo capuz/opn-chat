@@ -36,10 +36,14 @@ namespace opn_chat.Application.DTOs
         public string? Status { get; set; }
         public DateTime LastSeen { get; set; }
         public bool IsAdmin { get; set; }
+        public string PreferredLanguage { get; set; } = "auto";
+        public string? Timezone { get; set; }
     }
 
     public class RefreshTokenDto
     {
         public string RefreshToken { get; set; } = string.Empty;
     }
+
+    public record UpdatePreferencesDto(string PreferredLanguage, string? Timezone);
 }
