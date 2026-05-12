@@ -10,6 +10,7 @@ import { authService } from '../services/auth.service';
 import { privateChatService } from '../services/privateChat.service';
 import { roomService } from '../services/room.service';
 import { apiService } from '../services/api.service';
+import { showRewardedAd } from '../services/adsense.service';
 import { chatSounds } from '../utils/chatSounds';
 import { useTranslation } from '../i18n/I18nContext';
 import type { SupportedLanguage } from '../i18n/I18nContext';
@@ -236,6 +237,7 @@ const ChatPage = () => {
   const [showRewardModal,   setShowRewardModal]   = useState<'room' | 'nickname' | 'boost' | null>(null);
   const [showUpgradeModal,  setShowUpgradeModal]  = useState(false);
   const [isWatchingAd,      setIsWatchingAd]      = useState(false);
+  const [adGrantFailed,     setAdGrantFailed]     = useState(false);
   const [pendingBoostRoomId, setPendingBoostRoomId] = useState<string | null>(null);
   const [hoveredRoom,       setHoveredRoom]       = useState<string | null>(null);
   const [activeBoost,       setActiveBoost]       = useState<{ roomId: string; expiresAt: number } | null>(null);
@@ -832,7 +834,14 @@ const ChatPage = () => {
 
   const handleWatchAd = async () => {
     setIsWatchingAd(true);
-    await new Promise(r => setTimeout(r, 2000));
+    setAdGrantFailed(false);
+
+    const granted = await showRewardedAd();
+    if (!granted) {
+      setIsWatchingAd(false);
+      setAdGrantFailed(true);
+      return;
+    }
 
     if (showRewardModal === 'nickname') {
       try {
@@ -1733,8 +1742,9 @@ const ChatPage = () => {
           type={showRewardModal}
           isDark={isDark}
           onWatchAd={handleWatchAd}
-          onClose={() => setShowRewardModal(null)}
+          onClose={() => { setShowRewardModal(null); setAdGrantFailed(false); }}
           isWatchingAd={isWatchingAd}
+          adFailed={adGrantFailed}
         />
       )}
 

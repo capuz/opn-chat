@@ -26,5 +26,6 @@
   "monetize.boostActive": "🏆 {m}m",
   "monetize.boostNoToken": "Obter boost (assistir anúncio)",
   "monetize.boostBlocked": "Outra sala está sendo impulsionada",
-  "monetize.boostActivated": "Sala impulsionada por {m} minutos!"
+  "monetize.boostActivated": "Sala impulsionada por {m} minutos!",
+  "monetize.adNotCompleted": "Assista ao vídeo completo para desbloquear a recompensa."
 }

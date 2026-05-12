@@ -7,9 +7,10 @@ interface RewardModalProps {
   onUpgrade?: () => void;
   onClose: () => void;
   isWatchingAd: boolean;
+  adFailed?: boolean;
 }
 
-export function RewardModal({ type, isDark: _isDark, onWatchAd, onUpgrade, onClose, isWatchingAd }: RewardModalProps) {
+export function RewardModal({ type, isDark: _isDark, onWatchAd, onUpgrade, onClose, isWatchingAd, adFailed }: RewardModalProps) {
   const { t } = useTranslation();
 
   const subtitle =
@@ -63,55 +64,26 @@ export function RewardModal({ type, isDark: _isDark, onWatchAd, onUpgrade, onClo
             {isWatchingAd ? t('monetize.watchingAd') : `📺 ${t('monetize.watchAd')}`}
           </button>
 
-          {/* Mock ad card */}
+          {/* Loading state while AdSense overlay opens */}
           {isWatchingAd && (
             <div style={{
-              borderRadius: 8, overflow: 'hidden',
-              border: '1px solid var(--ch-border)',
-              background: 'var(--ch-bg-3)',
+              padding: '10px 0', textAlign: 'center',
+              fontSize: 12, color: 'var(--ch-text-2)',
             }}>
-              <div style={{
-                padding: '4px 10px',
-                background: 'var(--ch-border)',
-                fontSize: 10, color: 'var(--ch-text-3)',
-                letterSpacing: '0.06em',
-              }}>
-                📢 PUBLICIDAD · opn-chat sponsors
-              </div>
-              <div style={{ padding: '10px 12px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: 8, flexShrink: 0,
-                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 20,
-                }}>
-                  🛡️
-                </div>
-       <div align="center">
-
-      <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1234567890123456" crossorigin="anonymous"></script>
-
-<ins class="adsbygoogle"
-style="display:inline-block;width:728px;height:90px"
-data-ad-client="ca-pub-1234567890123456"
-data-ad-slot="1234567890"></ins>
-<script>
-(adsbygoogle = window.adsbygoogle || []).push({});
-</script>
-
-      </div> 
-              </div>
+              ⏳ {t('monetize.watchingAd')}
             </div>
           )}
 
-          {/* Ad progress bar */}
-          {isWatchingAd && (
-            <div style={{ height: 3, borderRadius: 2, background: 'var(--ch-border-2)', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', borderRadius: 2,
-                background: 'var(--ch-accent)',
-                animation: 'ad-progress 2s linear forwards',
-              }} />
+          {/* Ad failed / closed without completing */}
+          {adFailed && !isWatchingAd && (
+            <div style={{
+              padding: '8px 12px', borderRadius: 7,
+              background: 'var(--ch-bg-3)',
+              border: '1px solid var(--ch-border)',
+              fontSize: 12, color: 'var(--ch-text-2)',
+              textAlign: 'center',
+            }}>
+              {t('monetize.adNotCompleted')}
             </div>
           )}
 
