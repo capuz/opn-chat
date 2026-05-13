@@ -97,16 +97,9 @@ builder.Services.AddDbContext<AppDbContext>((serviceProvider, options) =>
     var databaseProvider = configuration["DatabaseProvider"]?.ToLowerInvariant() ?? "sqlite";
     
     if (databaseProvider == "postgresql")
-    {
-        // For PostgreSQL (future migration)
-        // options.UseNpgsql(connectionString);
-        throw new NotImplementedException("PostgreSQL provider not configured yet. Use SQLite for now.");
-    }
+        options.UseNpgsql(connectionString);
     else
-    {
-        // SQLite (default for development/initial phase)
         options.UseSqlite(connectionString);
-    }
 });
 
 // Add CORS for frontend (React + Vite — any localhost port in dev)
@@ -124,10 +117,12 @@ builder.Services.AddCors(options =>
         }
         else
         {
-            policy.WithOrigins("https://your-production-domain.com")
+            var frontendUrl = builder.Configuration["Frontend:Url"] ?? "https://opn-chat.vercel.app";
+            policy.WithOrigins(frontendUrl)
                   .AllowAnyMethod()
                   .AllowAnyHeader()
-                  .WithExposedHeaders("Authorization");
+                  .WithExposedHeaders("Authorization")
+                  .AllowCredentials();
         }
     });
 });
@@ -155,295 +150,73 @@ app.MapHub<opn_chat.WebAPI.Hubs.NotificationHub>("/hubs/notifications");
 
 app.MapControllers();
 
-// Seed initial data
+// Apply migrations and seed initial data
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    context.Database.EnsureCreated();
 
-    // Apply schema migrations not covered by EnsureCreated
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"NicknameChangeCount\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] NicknameChangeCount column added.");
-    }
-    catch (Exception migEx)
-    {
-        Console.WriteLine($"[MIGRATION] NicknameChangeCount: {migEx.Message}");
-    }
+    // PostgreSQL (prod/Render): fresh DB, EF migrations manage schema
+    // SQLite (dev): EnsureCreated preserves existing data; Migrate() would fail
+    //               on existing DBs because there's no __EFMigrationsHistory
+    if (context.Database.ProviderName?.Contains("Npgsql") == true)
+        await context.Database.MigrateAsync();
+    else
+        context.Database.EnsureCreated();
 
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"CountryCode\" TEXT");
-        Console.WriteLine("[MIGRATION] CountryCode column added.");
-    }
-    catch (Exception migEx)
-    {
-        Console.WriteLine($"[MIGRATION] CountryCode: {migEx.Message}");
-    }
+    Console.WriteLine("[STARTUP] Database ready.");
 
-    try
+    // Seed system rooms
+    if (!context.Rooms.Any())
     {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"ShowFlag\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] ShowFlag column added.");
-    }
-    catch (Exception migEx)
-    {
-        Console.WriteLine($"[MIGRATION] ShowFlag: {migEx.Message}");
+        context.Rooms.AddRange(new[]
+        {
+            new opn_chat.Domain.Entities.Room { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Name = "#general", Description = "Main chat room",       IsPrivate = false, IsSystem = true },
+            new opn_chat.Domain.Entities.Room { Id = Guid.Parse("22222222-2222-2222-2222-222222222222"), Name = "#random",  Description = "Off-topic discussions", IsPrivate = false, IsSystem = true },
+            new opn_chat.Domain.Entities.Room { Id = Guid.Parse("33333333-3333-3333-3333-333333333333"), Name = "#help",    Description = "Get help here",         IsPrivate = false, IsSystem = true },
+        });
+        await context.SaveChangesAsync();
+        Console.WriteLine("[SEED] System rooms created.");
     }
 
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Messages\" ADD COLUMN \"Type\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] Messages.Type column added.");
-    }
-    catch (Exception migEx)
-    {
-        Console.WriteLine($"[MIGRATION] Messages.Type: {migEx.Message}");
-    }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"GlobalBadge\" TEXT");
-        Console.WriteLine("[MIGRATION] GlobalBadge column added.");
-    }
-    catch (Exception migEx)
-    {
-        Console.WriteLine($"[MIGRATION] GlobalBadge: {migEx.Message}");
-    }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"PrivateMessages\" ADD COLUMN \"IsDeletedBySender\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] IsDeletedBySender column added.");
-    }
-    catch (Exception migEx)
-    {
-        Console.WriteLine($"[MIGRATION] IsDeletedBySender: {migEx.Message}");
-    }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"PrivateMessages\" ADD COLUMN \"IsDeletedByReceiver\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] IsDeletedByReceiver column added.");
-    }
-    catch (Exception migEx)
-    {
-        Console.WriteLine($"[MIGRATION] IsDeletedByReceiver: {migEx.Message}");
-    }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"PrivateMessages\" ADD COLUMN \"IsDeletedForEveryone\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] IsDeletedForEveryone column added.");
-    }
-    catch (Exception migEx)
-    {
-        Console.WriteLine($"[MIGRATION] IsDeletedForEveryone: {migEx.Message}");
-    }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"PrivateMessages\" ADD COLUMN \"DeletedAt\" TEXT");
-        Console.WriteLine("[MIGRATION] DeletedAt column added.");
-    }
-    catch (Exception migEx)
-    {
-        Console.WriteLine($"[MIGRATION] DeletedAt: {migEx.Message}");
-    }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"IsAdmin\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] Users.IsAdmin column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Users.IsAdmin: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"PreferredLanguage\" TEXT NOT NULL DEFAULT 'auto'");
-        Console.WriteLine("[MIGRATION] PreferredLanguage column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] PreferredLanguage: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"Timezone\" TEXT");
-        Console.WriteLine("[MIGRATION] Timezone column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Timezone: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"IsDeactivated\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] Users.IsDeactivated column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Users.IsDeactivated: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Rooms\" ADD COLUMN \"IsLocked\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] Rooms.IsLocked column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Rooms.IsLocked: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Rooms\" ADD COLUMN \"IsSystem\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] Rooms.IsSystem column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Rooms.IsSystem: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Rooms\" ADD COLUMN \"IsArchived\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] Rooms.IsArchived column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Rooms.IsArchived: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Rooms\" ADD COLUMN \"LastActivityAt\" TEXT");
-        Console.WriteLine("[MIGRATION] Rooms.LastActivityAt column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Rooms.LastActivityAt: {migEx.Message}"); }
-
-    // Rename and mark system rooms
-    try
-    {
-        context.Database.ExecuteSqlRaw("UPDATE \"Rooms\" SET \"Name\"='#general', \"IsSystem\"=1 WHERE \"Id\"='11111111-1111-1111-1111-111111111111'");
-        context.Database.ExecuteSqlRaw("UPDATE \"Rooms\" SET \"Name\"='#random',  \"IsSystem\"=1 WHERE \"Id\"='22222222-2222-2222-2222-222222222222'");
-        context.Database.ExecuteSqlRaw("UPDATE \"Rooms\" SET \"Name\"='#help',    \"IsSystem\"=1 WHERE \"Id\"='33333333-3333-3333-3333-333333333333'");
-        Console.WriteLine("[MIGRATION] System rooms renamed to IRC style.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] System rooms rename: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""AdminAuditLogs"" (
-            ""Id"" TEXT NOT NULL PRIMARY KEY,
-            ""AdminId"" TEXT NOT NULL,
-            ""AdminNickname"" TEXT NOT NULL DEFAULT '',
-            ""Action"" TEXT NOT NULL DEFAULT '',
-            ""TargetType"" TEXT,
-            ""TargetId"" TEXT,
-            ""TargetDisplay"" TEXT,
-            ""Details"" TEXT,
-            ""Timestamp"" TEXT NOT NULL DEFAULT ''
-        )");
-        Console.WriteLine("[MIGRATION] AdminAuditLogs table created.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] AdminAuditLogs: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""SystemSettings"" (
-            ""Key"" TEXT NOT NULL PRIMARY KEY,
-            ""Value"" TEXT
-        )");
-        Console.WriteLine("[MIGRATION] SystemSettings table created.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] SystemSettings: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"NicknameChangesToday\" INTEGER NOT NULL DEFAULT 0");
-        Console.WriteLine("[MIGRATION] Users.NicknameChangesToday column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Users.NicknameChangesToday: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"NicknameChangesDate\" TEXT");
-        Console.WriteLine("[MIGRATION] Users.NicknameChangesDate column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Users.NicknameChangesDate: {migEx.Message}"); }
-
-    try
-    {
-        context.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN \"NickAdUnlockedUntil\" TEXT");
-        Console.WriteLine("[MIGRATION] Users.NickAdUnlockedUntil column added.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Users.NickAdUnlockedUntil: {migEx.Message}"); }
-
+    // Seed SystemSettings
     var defaultSettings = new[]
     {
-        ("MaxNicknameChanges", "3"),
-        ("AllowPrivateChats", "true"),
-        ("AllowRoomCreation", "true"),
-        ("MaintenanceMode", "false"),
-        ("SpamThreshold", "5"),
-        ("GlobalAnnouncementBanner", "")
+        ("MaxNicknameChanges",       "3"),
+        ("AllowPrivateChats",        "true"),
+        ("AllowRoomCreation",        "true"),
+        ("MaintenanceMode",          "false"),
+        ("SpamThreshold",            "5"),
+        ("GlobalAnnouncementBanner", ""),
     };
     foreach (var (key, value) in defaultSettings)
     {
-        try
-        {
-            context.Database.ExecuteSqlRaw(
-                $"INSERT OR IGNORE INTO \"SystemSettings\" (\"Key\", \"Value\") VALUES ('{key}', '{value}')");
-        }
-        catch { /* ignore */ }
+        if (!context.SystemSettings.Any(s => s.Key == key))
+            context.SystemSettings.Add(new opn_chat.Domain.Entities.SystemSetting { Key = key, Value = value });
     }
+    await context.SaveChangesAsync();
+    Console.WriteLine("[SEED] SystemSettings seeded.");
 
-    try
-    {
-        context.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""CommandPermissions"" (
-            ""CommandName"" TEXT NOT NULL PRIMARY KEY,
-            ""Description"" TEXT NOT NULL DEFAULT '',
-            ""Syntax"" TEXT NOT NULL DEFAULT '',
-            ""Category"" TEXT NOT NULL DEFAULT '',
-            ""Examples"" TEXT NOT NULL DEFAULT '',
-            ""MemberAllowed"" INTEGER NOT NULL DEFAULT 0,
-            ""OperatorAllowed"" INTEGER NOT NULL DEFAULT 0,
-            ""FounderAllowed"" INTEGER NOT NULL DEFAULT 0,
-            ""AdminAllowed"" INTEGER NOT NULL DEFAULT 0,
-            ""IsDangerous"" INTEGER NOT NULL DEFAULT 0,
-            ""IsSystem"" INTEGER NOT NULL DEFAULT 0,
-            ""IsDeprecated"" INTEGER NOT NULL DEFAULT 0
-        )");
-        Console.WriteLine("[MIGRATION] CommandPermissions table created.");
-    }
-    catch (Exception migEx) { Console.WriteLine($"[MIGRATION] CommandPermissions: {migEx.Message}"); }
-
+    // Seed CommandPermissions
     var defaultPerms = opn_chat.Infrastructure.Services.AdminService.DefaultPermissions();
     foreach (var p in defaultPerms)
     {
-        try
-        {
-            context.Database.ExecuteSqlRaw(
-                $"INSERT OR IGNORE INTO \"CommandPermissions\" (\"CommandName\",\"Description\",\"Syntax\",\"Category\",\"Examples\"," +
-                $"\"MemberAllowed\",\"OperatorAllowed\",\"FounderAllowed\",\"AdminAllowed\",\"IsDangerous\",\"IsSystem\",\"IsDeprecated\") " +
-                $"VALUES ('{p.CommandName}','{p.Description.Replace("'","''")}','{p.Syntax.Replace("'","''")}','{p.Category}'," +
-                $"'{p.Examples.Replace("'","''")}',{(p.MemberAllowed?1:0)},{(p.OperatorAllowed?1:0)},{(p.FounderAllowed?1:0)}," +
-                $"{(p.AdminAllowed?1:0)},{(p.IsDangerous?1:0)},{(p.IsSystem?1:0)},{(p.IsDeprecated?1:0)})");
-        }
-        catch { /* ignore — already seeded */ }
+        if (!context.CommandPermissions.Any(cp => cp.CommandName == p.CommandName))
+            context.CommandPermissions.Add(p);
     }
+    await context.SaveChangesAsync();
     Console.WriteLine("[SEED] CommandPermissions seeded.");
 
+    // Seed admin user
     var seedEmail = app.Configuration["Admin:SeedEmail"];
     if (!string.IsNullOrWhiteSpace(seedEmail))
     {
-        try
+        var adminUser = context.Users.FirstOrDefault(u => u.Email == seedEmail);
+        if (adminUser != null)
         {
-            context.Database.ExecuteSqlInterpolated(
-                $"UPDATE \"Users\" SET \"IsAdmin\" = 1 WHERE \"Email\" = {seedEmail}");
-            Console.WriteLine($"[MIGRATION] Admin seeded for {seedEmail}.");
+            adminUser.IsAdmin = true;
+            await context.SaveChangesAsync();
+            Console.WriteLine($"[SEED] Admin seeded for {seedEmail}.");
         }
-        catch (Exception migEx) { Console.WriteLine($"[MIGRATION] Admin seed: {migEx.Message}"); }
-    }
-
-    // Seed rooms if they don't exist
-    if (!context.Rooms.Any())
-    {
-        var rooms = new[]
-        {
-            new opn_chat.Domain.Entities.Room { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Name = "Global Chat", Description = "Main chat room", IsPrivate = false },
-            new opn_chat.Domain.Entities.Room { Id = Guid.Parse("22222222-2222-2222-2222-222222222222"), Name = "Random", Description = "Off-topic discussions", IsPrivate = false },
-            new opn_chat.Domain.Entities.Room { Id = Guid.Parse("33333333-3333-3333-3333-333333333333"), Name = "Support", Description = "Get help here", IsPrivate = false },
-        };
-        context.Rooms.AddRange(rooms);
-        await context.SaveChangesAsync();
     }
 }
 

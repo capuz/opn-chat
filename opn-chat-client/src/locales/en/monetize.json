@@ -27,5 +27,6 @@
   "monetize.boostNoToken": "Get a boost (watch ad)",
   "monetize.boostBlocked": "Another room is currently boosted",
   "monetize.boostActivated": "Room boosted for {m} minutes!",
-  "monetize.adNotCompleted": "Watch the full video to unlock the reward."
+  "monetize.adNotCompleted": "Watch the full video to unlock the reward.",
+  "monetize.watchAdRetry": "Retry"
 }

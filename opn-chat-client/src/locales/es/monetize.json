@@ -27,5 +27,6 @@
   "monetize.boostNoToken": "Obtener boost (ver anuncio)",
   "monetize.boostBlocked": "Otro Espacio está siendo impulsado",
   "monetize.boostActivated": "¡Espacio impulsado por {m} minutos!",
-  "monetize.adNotCompleted": "Mirá el video completo para desbloquear el premio."
+  "monetize.adNotCompleted": "Mirá el video completo para desbloquear el premio.",
+  "monetize.watchAdRetry": "Reintentar"
 }

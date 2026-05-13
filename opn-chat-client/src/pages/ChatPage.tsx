@@ -10,7 +10,7 @@ import { authService } from '../services/auth.service';
 import { privateChatService } from '../services/privateChat.service';
 import { roomService } from '../services/room.service';
 import { apiService } from '../services/api.service';
-import { showRewardedAd } from '../services/adsense.service';
+import { adManager, MODAL_TO_REWARD } from '../ads';
 import { chatSounds } from '../utils/chatSounds';
 import { useTranslation } from '../i18n/I18nContext';
 import type { SupportedLanguage } from '../i18n/I18nContext';
@@ -833,39 +833,35 @@ const ChatPage = () => {
   };
 
   const handleWatchAd = async () => {
+    if (!showRewardModal) return;
     setIsWatchingAd(true);
     setAdGrantFailed(false);
 
-    const granted = await showRewardedAd();
-    if (!granted) {
-      setIsWatchingAd(false);
+    const result = await adManager.requestReward({
+      rewardType: MODAL_TO_REWARD[showRewardModal],
+      roomId:     pendingBoostRoomId ?? undefined,
+    });
+
+    setIsWatchingAd(false);
+
+    if (!result.granted) {
       setAdGrantFailed(true);
       return;
     }
 
-    if (showRewardModal === 'nickname') {
-      try {
-        const res = await api.post('/api/profile/nick-ad-unlock');
-        monetization.watchAdForNickChange(new Date(res.data.unlockedUntil).getTime());
-      } catch {
-        monetization.watchAdForNickChange(Date.now() + 12 * 60 * 60 * 1000);
-      }
-      setIsWatchingAd(false);
+    if (result.payload?.kind === 'nickname_change') {
+      monetization.watchAdForNickChange(result.payload.unlockedUntil);
       setShowRewardModal(null);
       openNicknameModal();
-    } else if (showRewardModal === 'boost' && pendingBoostRoomId) {
-      const roomId = pendingBoostRoomId;
-      monetization.grantBoostToken(roomId);
-      monetization.consumeBoostToken(roomId);
-      setIsWatchingAd(false);
-      setShowRewardModal(null);
+    } else if (result.payload?.kind === 'boost') {
+      monetization.grantBoostToken(result.payload.roomId);
+      monetization.consumeBoostToken(result.payload.roomId);
       setPendingBoostRoomId(null);
-      const conn = getSignalRConnection('chat');
-      try {
-        await conn.invoke('BoostRoom', roomId);
-      } catch { /* BoostError manejado via SignalR */ }
+      setShowRewardModal(null);
+    } else if (result.payload?.kind === 'room_slot') {
+      monetization.watchAdForRoomSlot();
+      setShowRewardModal(null);
     } else {
-      setIsWatchingAd(false);
       setShowRewardModal(null);
     }
   };
@@ -1740,7 +1736,6 @@ const ChatPage = () => {
       {showRewardModal && (
         <RewardModal
           type={showRewardModal}
-          isDark={isDark}
           onWatchAd={handleWatchAd}
           onClose={() => { setShowRewardModal(null); setAdGrantFailed(false); }}
           isWatchingAd={isWatchingAd}
