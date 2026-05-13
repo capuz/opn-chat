@@ -227,4 +227,8 @@ Deploy: [NOT SET]
 Active: [new session]
 Last: [first session]
 
+## Session Continuity
+State: opn-chat-client/index.html (edit)
+Files: opn-chat-client/src/locales/pt-BR/monetize.json, opn-chat-client/src/locales/es/monetize.json, opn-chat-client/src/locales/en/monetize.json, opn-chat-client/src/components/RewardModal.tsx, opn-chat-client/src/index.css
+
 # === END COGNILAYER ===
